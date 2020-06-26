@@ -1,4 +1,4 @@
-package sqlDb
+package dbmigration
 
 type MigrationConfig struct {
 	migrateOnStart bool

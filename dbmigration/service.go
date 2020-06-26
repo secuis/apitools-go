@@ -1,4 +1,4 @@
-package sqlDb
+package dbmigration
 
 import (
 	"context"
@@ -9,21 +9,21 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-type Migrationservice struct {
+type MigrationService struct {
 	log *zap.SugaredLogger
 
-	mR MigrationRepository
+	mA Migrator
 }
 
 func NewMigrationService(log *zap.SugaredLogger, config MigrationConfig) devpb.MigrationServer {
-	repo := NewMigrationRepository(log, config.sqlConnStr, config.sqlFileDir)
-	s := Migrationservice{
+	action := NewMigrator(log, config.sqlConnStr, config.sqlFileDir)
+	s := MigrationService{
 		log: log,
-		mR:  repo,
+		mA:  action,
 	}
 
 	if config.migrateOnStart {
-		migrationStatus, err := repo.Migrate()
+		migrationStatus, err := action.Migrate()
 
 		if err != nil {
 			panic(err)
@@ -35,8 +35,8 @@ func NewMigrationService(log *zap.SugaredLogger, config MigrationConfig) devpb.M
 	return s
 }
 
-func (d Migrationservice) DatabaseMigrate(ctx context.Context, request *devpb.DatabaseMigrateRequest) (*devpb.DatabaseMigrateResponse, error) {
-	migratiosnStatus, err := d.mR.Migrate()
+func (s MigrationService) DatabaseMigrate(ctx context.Context, request *devpb.DatabaseMigrateRequest) (*devpb.DatabaseMigrateResponse, error) {
+	migratiosnStatus, err := s.mA.Migrate()
 
 	if err != nil {
 		log.Warningf(ctx, "could not migrate database, err: %v", err)
@@ -46,8 +46,8 @@ func (d Migrationservice) DatabaseMigrate(ctx context.Context, request *devpb.Da
 	return &devpb.DatabaseMigrateResponse{Status: migratiosnStatus}, nil
 }
 
-func (d Migrationservice) DatabaseStatus(ctx context.Context, request *devpb.DatabaseStatusRequest) (*devpb.DatabaseStatusResponse, error) {
-	migratiosnStatus, err := d.mR.Status()
+func (s MigrationService) DatabaseStatus(ctx context.Context, request *devpb.DatabaseStatusRequest) (*devpb.DatabaseStatusResponse, error) {
+	migratiosnStatus, err := s.mA.Status()
 
 	if err != nil {
 		log.Warningf(ctx, "could not get database status, err: %v", err)
@@ -57,8 +57,8 @@ func (d Migrationservice) DatabaseStatus(ctx context.Context, request *devpb.Dat
 	return &devpb.DatabaseStatusResponse{Status: migratiosnStatus}, nil
 }
 
-func (d Migrationservice) DatabaseRollback(ctx context.Context, request *devpb.DatabaseRollbackRequest) (*devpb.DatabaseRollbackResponse, error) {
-	migratiosnStatus, err := d.mR.Rollback()
+func (s MigrationService) DatabaseRollback(ctx context.Context, request *devpb.DatabaseRollbackRequest) (*devpb.DatabaseRollbackResponse, error) {
+	migratiosnStatus, err := s.mA.Rollback()
 
 	if err != nil {
 		log.Warningf(ctx, "could not rollback database, err: %v", err)
@@ -68,8 +68,8 @@ func (d Migrationservice) DatabaseRollback(ctx context.Context, request *devpb.D
 	return &devpb.DatabaseRollbackResponse{Status: migratiosnStatus}, nil
 }
 
-func (d Migrationservice) DatabaseForceVersion(ctx context.Context, request *devpb.DatabaseForceVersionRequest) (*devpb.DatabaseForceVersionResponse, error) {
-	migratiosnStatus, err := d.mR.ForceVersion(request.GetVersion())
+func (s MigrationService) DatabaseForceVersion(ctx context.Context, request *devpb.DatabaseForceVersionRequest) (*devpb.DatabaseForceVersionResponse, error) {
+	migratiosnStatus, err := s.mA.ForceVersion(request.GetVersion())
 
 	if err != nil {
 		log.Warningf(ctx, "could not force database version, err: %v", err)

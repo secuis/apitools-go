@@ -1,4 +1,4 @@
-package apiError
+package apierr
 
 import "errors"
 

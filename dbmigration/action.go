@@ -1,4 +1,4 @@
-package sqlDb
+package dbmigration
 
 import (
 	"dev.azure.com/securitasintelligentservices/insights/_git/sispbgo.git/sis/rp/devpb"
@@ -12,20 +12,20 @@ import (
 	"io/ioutil"
 )
 
-type MigrationRepository struct {
+type Migrator struct {
 	migrator *migrate.Migrate
 	fileDir  string
 	log      *zap.SugaredLogger
 }
 
-func NewMigrationRepository(log *zap.SugaredLogger, sqlConnStr, fileDir string) MigrationRepository {
+func NewMigrator(log *zap.SugaredLogger, sqlConnStr, fileDir string) Migrator {
 	m, err := migrate.New(fmt.Sprintf("file://%s", fileDir), sqlConnStr)
 
 	if err != nil {
 		panic(err)
 	}
 
-	s := MigrationRepository{
+	s := Migrator{
 		migrator: m,
 		fileDir:  fileDir,
 		log:      log,
@@ -34,10 +34,10 @@ func NewMigrationRepository(log *zap.SugaredLogger, sqlConnStr, fileDir string) 
 	return s
 }
 
-func (mr MigrationRepository) Migrate() (*devpb.MigrationStatus, error) {
-	mr.log.Infof("Migrating...")
+func (m Migrator) Migrate() (*devpb.MigrationStatus, error) {
+	m.log.Infof("Migrating...")
 
-	status, err := mr.Status()
+	status, err := m.Status()
 
 	if err != nil {
 		return status, err
@@ -50,30 +50,30 @@ func (mr MigrationRepository) Migrate() (*devpb.MigrationStatus, error) {
 
 	totalSteps := 0
 
-	migrationErr := mr.migrator.Steps(1)
+	migrationErr := m.migrator.Steps(1)
 	for migrationErr == nil {
 		totalSteps++
 		fmt.Printf("Migrated up one step... Total: %d\n", totalSteps)
 
-		migrationErr = mr.migrator.Steps(1)
+		migrationErr = m.migrator.Steps(1)
 	}
 
 	if migrationErr.Error() != "file does not exist" {
 		fmt.Println("Rolling back one version due to error")
 		errMsg := fmt.Sprintf("failed to run migrations, err: %v\n", migrationErr)
 
-		_ = mr.migrator.Force(int(status.Version) + totalSteps - 1)
+		_ = m.migrator.Force(int(status.Version) + totalSteps - 1)
 
 		return status, errors.New(errMsg)
 	}
 
-	fmt.Printf("Migrated a total of %d steps\n", totalSteps)
-	return mr.Status()
+	fmt.Printf("Migrated m total of %d steps\n", totalSteps)
+	return m.Status()
 }
 
-func (mr MigrationRepository) Status() (*devpb.MigrationStatus, error) {
-	version, dirty, err := mr.migrator.Version()
-	latestVersion := mr.getLatestVersion()
+func (m Migrator) Status() (*devpb.MigrationStatus, error) {
+	version, dirty, err := m.migrator.Version()
+	latestVersion := m.getLatestVersion()
 
 	if err != nil {
 		if err == migrate.ErrNilVersion {
@@ -97,18 +97,18 @@ func (mr MigrationRepository) Status() (*devpb.MigrationStatus, error) {
 	}, nil
 }
 
-func (mr MigrationRepository) ForceVersion(version int32) (*devpb.MigrationStatus, error) {
-	err := mr.migrator.Force(int(version))
+func (m Migrator) ForceVersion(version int32) (*devpb.MigrationStatus, error) {
+	err := m.migrator.Force(int(version))
 
 	if err != nil {
 		return &devpb.MigrationStatus{}, err
 	}
 
-	return mr.Status()
+	return m.Status()
 }
 
-func (mr MigrationRepository) Rollback() (*devpb.MigrationStatus, error) {
-	status, err := mr.Status()
+func (m Migrator) Rollback() (*devpb.MigrationStatus, error) {
+	status, err := m.Status()
 
 	if err != nil {
 		return status, err
@@ -121,28 +121,28 @@ func (mr MigrationRepository) Rollback() (*devpb.MigrationStatus, error) {
 
 	totalSteps := 0
 
-	migrationErr := mr.migrator.Steps(-1)
+	migrationErr := m.migrator.Steps(-1)
 	for migrationErr == nil {
 		totalSteps--
 		fmt.Printf("Rolled back one step... Total: %d\n", totalSteps)
 
-		migrationErr = mr.migrator.Steps(-1)
+		migrationErr = m.migrator.Steps(-1)
 	}
 
 	if migrationErr.Error() != "file does not exist" {
 		fmt.Println("Rolling back one version due to error")
 		errMsg := fmt.Sprintf("failed to run migrations, err: %v\n", migrationErr)
 
-		_, _ = mr.ForceVersion(int32(status.Version) + int32(totalSteps) + 1)
+		_, _ = m.ForceVersion(int32(status.Version) + int32(totalSteps) + 1)
 
 		return status, errors.New(errMsg)
 	}
 
-	return mr.Status()
+	return m.Status()
 }
 
-func (mr MigrationRepository) getLatestVersion() int32 {
-	files, err := ioutil.ReadDir(mr.fileDir)
+func (m Migrator) getLatestVersion() int32 {
+	files, err := ioutil.ReadDir(m.fileDir)
 	if err != nil {
 		return 0
 	}
