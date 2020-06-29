@@ -1,7 +1,7 @@
 package dbmigration
 
 type MigrationConfig struct {
-	migrateOnStart bool
-	sqlFileDir     string
-	sqlConnStr     string
+	MigrateOnStart bool
+	SqlFileDir     string
+	SqlConnStr     string
 }
