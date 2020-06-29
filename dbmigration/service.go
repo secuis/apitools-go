@@ -16,13 +16,13 @@ type MigrationService struct {
 }
 
 func NewMigrationService(log *zap.SugaredLogger, config MigrationConfig) devpb.MigrationServer {
-	action := NewMigrator(log, config.sqlConnStr, config.sqlFileDir)
+	action := NewMigrator(log, config.SqlConnStr, config.SqlFileDir)
 	s := MigrationService{
 		log: log,
 		mA:  action,
 	}
 
-	if config.migrateOnStart {
+	if config.MigrateOnStart {
 		migrationStatus, err := action.Migrate()
 
 		if err != nil {
