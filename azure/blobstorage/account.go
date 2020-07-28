@@ -158,7 +158,7 @@ func (sa storageAccount) ListBlobsByPattern(ctx context.Context, container strin
 	for _, blobName := range blobNames {
 		matched, err := path.Match(pattern, blobName)
 		if err != nil {
-			return nil, errors.Errorf("unexpected error when matching patterns: %w", err)
+			return nil, fmt.Errorf("unexpected error when matching patterns: %w", err)
 		}
 		if matched {
 			matchingBlobNames = append(matchingBlobNames, blobName)

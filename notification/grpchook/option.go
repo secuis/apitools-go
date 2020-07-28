@@ -2,95 +2,99 @@ package grpchook
 
 import (
 	"context"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 type EndpointConfig map[string]Config
-
 type EndpointOption func(*Config)
-type DecisionFunc func(ctx context.Context, respError error) bool
 
-// The decision func decides if a notification should be sent or not.
-// The default func decides this based on the options for each endpoint.
-// Set a custom func to decide if a notification should be sent based on other information from the request or
+// ShouldNotifyFunc determines whether a notification should happen for a given error.
+type ShouldNotifyForErrFunc func(ctx context.Context, respError error) bool
+
 type Config struct {
-	DeciderFunc     DecisionFunc
-	NotifyOnError   bool
-	NotifyOnSuccess bool
-	ErrorCodes      []codes.Code
+	CustomShouldNotify ShouldNotifyForErrFunc
+	SkipErrors         bool
+	NotifyOnSuccess    bool
+	ErrorCodes         []codes.Code
 }
-
 
 // The default options for an endpoint is
 // * Send notifications on error only
 // * Send notification on all error codes
-func Endpoint(funcName string, opts ...EndpointOption) EndpointConfig {
-	c := &Config{
-		DeciderFunc:     nil,
-		NotifyOnError:   true,
-		NotifyOnSuccess: false,
+func NewEndpointConfig(funcName string, opts ...EndpointOption) EndpointConfig {
+	c := Config{
+		CustomShouldNotify: nil,
+		SkipErrors:         false,
+		NotifyOnSuccess:    false,
 	}
 
 	for _, opt := range opts {
-		opt(c)
+		opt(&c)
 	}
 
-	return EndpointConfig{funcName: *c}
+	return EndpointConfig{funcName: c}
 }
 
 // If this is set a slack notification will only be sent if any of these gRPC errors occurs.
 // If this is not set a slack message will be sent on any gRPC error that occurs.
-func NotifyOnlyOn(codeList []codes.Code) EndpointOption {
+func NotifyOnlyOn(codes []codes.Code) EndpointOption {
 	return func(c *Config) {
-		c.ErrorCodes = codeList
+		c.ErrorCodes = codes
 	}
 }
 
 // Set if a message notification should be sent if the request was handled successfully.
-func DoNotifyOnSuccess(b bool) EndpointOption {
+func DoNotifyOnSuccess() EndpointOption {
 	return func(c *Config) {
-		c.NotifyOnSuccess = b
+		c.NotifyOnSuccess = true
 	}
 }
 
-// Set if a message notification should be sent if a gRPC error occurs.
-func DoNotifyOnError(b bool) EndpointOption {
+// Set to skip message notifications when a gRPC error occurs.
+func DoSkipErrors() EndpointOption {
 	return func(c *Config) {
-		c.NotifyOnError = b
+		c.SkipErrors = true
 	}
 }
 
-// This function decides if a slack notification should be sent.
-// A default function will be used based on the sendOnError and sendOnInfo values if no customer function is set.
-func UseCustomDecisionFunction(f DecisionFunc) EndpointOption {
+// UseShouldNotifyForErrFunc will use the provided function to determine whether a
+// a slack notification should be sent for a given error.
+func UseShouldNotifyForErrFunc(f ShouldNotifyForErrFunc) EndpointOption {
 	return func(c *Config) {
-		c.DeciderFunc = f
+		c.CustomShouldNotify = f
 	}
 }
 
-// The default decider func
-func (c Config) ShouldSendNotification(ctx context.Context, respError error) bool {
-	if respError != nil {
-		if c.NotifyOnError {
-			if len(c.ErrorCodes) > 0 {
-				errStatus, _ := status.FromError(respError)
-				respErrCode := errStatus.Code()
-				for _, errCode := range c.ErrorCodes {
-					if respErrCode == errCode {
-						return true
-					}
-				}
-				return false
-			}
-			return true
-		}
+// ShouldNotify determines whether a notification should be sent for the provided error.
+// The default behaviour can be overridden by setting a custom decision function with
+// UseShouldNotifyForErrFunc(ShouldNotify).
+func (c Config) ShouldNotifyForErr(ctx context.Context, err error) bool {
+	if c.CustomShouldNotify != nil {
+		return c.CustomShouldNotify(ctx, err)
+	}
+
+	if err == nil {
+		return c.NotifyOnSuccess
+	}
+
+	if c.SkipErrors {
 		return false
 	}
 
-	if c.NotifyOnSuccess {
+	// Return true on all errors if no specific error codes have been set
+	if len(c.ErrorCodes) == 0 {
 		return true
 	}
 
+	// Determine whether the error is in the list of error codes
+	errStatus, _ := status.FromError(err)
+	respErrCode := errStatus.Code()
+	for _, errCode := range c.ErrorCodes {
+		if respErrCode == errCode {
+			return true
+		}
+	}
 	return false
 }
