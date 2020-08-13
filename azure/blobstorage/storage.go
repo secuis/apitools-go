@@ -79,6 +79,7 @@ func (bs *blobStorage) ListBlobsByPattern(ctx context.Context, account string, c
 }
 
 func (bs *blobStorage) UploadBlob(ctx context.Context, account string, container string, reader io.Reader, blobName string) error {
+
 	acc, ok := bs.accounts[account]
 
 	if !ok {

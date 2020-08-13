@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"sync"
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
@@ -40,9 +41,10 @@ type StorageAccount interface {
 
 type storageAccount struct {
 	// Pipelines are threadsafe and may be shared
-	pipeline      pipeline.Pipeline
-	name          string
-	containerURLs map[string]*azblob.ContainerURL
+	pipeline        pipeline.Pipeline
+	name            string
+	containerURLs   map[string]*azblob.ContainerURL
+	containerURLMtx sync.RWMutex
 }
 
 // NewAccount returns an Azure implementation of a StorageAccount
@@ -74,6 +76,9 @@ func (sa *storageAccount) newContainer(containerName string) *azblob.ContainerUR
 }
 
 func (sa *storageAccount) containerURL(containerName string) (*azblob.ContainerURL, error) {
+	sa.containerURLMtx.Lock()
+	defer sa.containerURLMtx.Unlock()
+
 	if _, ok := sa.containerURLs[containerName]; ok {
 		return sa.containerURLs[containerName], nil
 	}
@@ -87,7 +92,7 @@ func (sa *storageAccount) containerURL(containerName string) (*azblob.ContainerU
 	return sa.containerURLs[containerName], nil
 }
 
-func (sa storageAccount) BlobReader(ctx context.Context, container string, blob string) (io.ReadCloser, error) {
+func (sa *storageAccount) BlobReader(ctx context.Context, container string, blob string) (io.ReadCloser, error) {
 	cURL, err := sa.containerURL(container)
 	if err != nil {
 		return nil, err
@@ -102,7 +107,7 @@ func (sa storageAccount) BlobReader(ctx context.Context, container string, blob 
 	return resp.Body(azblob.RetryReaderOptions{MaxRetryRequests: 20}), nil
 }
 
-func (sa storageAccount) BlobBytes(ctx context.Context, container string, blob string) ([]byte, error) {
+func (sa *storageAccount) BlobBytes(ctx context.Context, container string, blob string) ([]byte, error) {
 	reader, err := sa.BlobReader(ctx, container, blob)
 
 	if err != nil {
@@ -120,7 +125,7 @@ func (sa storageAccount) BlobBytes(ctx context.Context, container string, blob s
 	return buf.Bytes(), nil
 }
 
-func (sa storageAccount) ListBlobs(ctx context.Context, container string, prefix string) ([]string, error) {
+func (sa *storageAccount) ListBlobs(ctx context.Context, container string, prefix string) ([]string, error) {
 	var blobNames []string
 
 	cURL, err := sa.containerURL(container)
@@ -140,7 +145,7 @@ func (sa storageAccount) ListBlobs(ctx context.Context, container string, prefix
 	return blobNames, nil
 }
 
-func (sa storageAccount) ListBlobsByPattern(ctx context.Context, container string, pattern string) ([]string, error) {
+func (sa *storageAccount) ListBlobsByPattern(ctx context.Context, container string, pattern string) ([]string, error) {
 	wildcardParts := strings.Split(pattern, "*")
 	dirPrefix := path.Dir(wildcardParts[0])
 
@@ -168,7 +173,7 @@ func (sa storageAccount) ListBlobsByPattern(ctx context.Context, container strin
 	return matchingBlobNames, nil
 }
 
-func (sa storageAccount) UploadBlob(ctx context.Context, container string, reader io.Reader, blobName string) error {
+func (sa *storageAccount) UploadBlob(ctx context.Context, container string, reader io.Reader, blobName string) error {
 	cURL, err := sa.containerURL(container)
 	if err != nil {
 		return err
