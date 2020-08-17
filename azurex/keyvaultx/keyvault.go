@@ -110,7 +110,7 @@ func (v KeyVault) UploadCertificate(ctx context.Context, cert *x509.Certificate,
 	}
 	base64Encoded := base64.StdEncoding.EncodeToString(pfx)
 
-	exists, err := v.checkCertExists(ctx, v.vaultURL, certName)
+	exists, err := v.checkCertExists(ctx, certName)
 	if err != nil {
 		return err
 	}
@@ -128,9 +128,9 @@ func (v KeyVault) UploadCertificate(ctx context.Context, cert *x509.Certificate,
 	return err
 }
 
-func (v KeyVault) checkCertExists(ctx context.Context, baseURL, certName string) (bool, error) {
+func (v KeyVault) checkCertExists(ctx context.Context, certName string) (bool, error) {
 
-	_, _, err := v.GetCertificate(ctx, baseURL, certName, "")
+	_, err := v.BaseClient.GetCertificate(ctx, v.vaultURL, certName, "")
 	if err != nil {
 		if detailedErr, ok := err.(autorest.DetailedError); ok {
 			if detailedErr.StatusCode == 404 {
