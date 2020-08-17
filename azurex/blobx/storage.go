@@ -1,4 +1,4 @@
-package blobstorage
+package blobx
 
 import (
 	"context"
