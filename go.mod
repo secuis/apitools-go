@@ -5,9 +5,11 @@ go 1.13
 require (
 	dev.azure.com/securitasintelligentservices/insights/_git/sispbgo.git v0.1.14
 	github.com/Azure/azure-pipeline-go v0.2.2
-	github.com/Azure/azure-sdk-for-go v45.1.0+incompatible // indirect
+	github.com/Azure/azure-sdk-for-go v45.1.0+incompatible
 	github.com/Azure/azure-storage-blob-go v0.8.0
+	github.com/Azure/go-autorest/autorest v0.11.0
 	github.com/Azure/go-autorest/autorest/azure/auth v0.5.1 // indirect
+	github.com/Azure/go-autorest/autorest/azure/cli v0.4.0
 	github.com/Azure/go-autorest/autorest/to v0.4.0 // indirect
 	github.com/Azure/go-autorest/autorest/validation v0.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1
@@ -24,5 +26,5 @@ require (
 	google.golang.org/grpc v1.29.1
 	gopkg.in/go-playground/assert.v1 v1.2.1 // indirect
 	gopkg.in/go-playground/validator.v9 v9.31.0
-	software.sslmate.com/src/go-pkcs12 v0.0.0-20200619203921-c9ed90bd32dc // indirect
+	software.sslmate.com/src/go-pkcs12 v0.0.0-20200619203921-c9ed90bd32dc
 )

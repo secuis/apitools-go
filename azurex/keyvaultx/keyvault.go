@@ -1,4 +1,4 @@
-package keyvault
+package keyvaultx
 
 import (
 	"context"
@@ -7,59 +7,73 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
+
 	"github.com/Azure/azure-sdk-for-go/services/keyvault/auth"
 	"github.com/Azure/azure-sdk-for-go/services/keyvault/v7.0/keyvault"
 	"github.com/Azure/go-autorest/autorest"
+	"github.com/Azure/go-autorest/autorest/azure/cli"
 	"github.com/pkg/errors"
 	pkcs12 "software.sslmate.com/src/go-pkcs12"
 )
 
-// KeyVault implements the azure.KeyVault interface
+// KeyVault provides an interface towards the Azure Key Vault
+// primarily used for upload and download of SSL certificates.
 type KeyVault struct {
-	vault    keyvault.BaseClient
-	vaultUrl string
+	keyvault.BaseClient
+	vaultURL string
+}
+
+func New(kvName string) (KeyVault, error) {
+	kv, err := NewFromCLI(kvName)
+	if err == nil {
+		return kv, err
+	}
+	return NewFromEnv(kvName)
 }
 
 // Create a new connection to an Azure key vault and fetch authentication from environment variables.
 // See available env var authentications here
 // https://docs.microsoft.com/en-us/azure/developer/go/azure-sdk-authorization#use-environment-based-authentication
-func NewFromEnv(kvName string) KeyVault {
+func NewFromEnv(kvName string) (KeyVault, error) {
+	var keyVault KeyVault
+
 	kv := keyvault.New()
 	authorizer, err := auth.NewAuthorizerFromEnvironment()
-
 	if err != nil {
-		panic(err)
+		return keyVault, err
 	}
 
-	kv.Authorizer = authorizer
+	keyVault.BaseClient = kv
+	keyVault.Authorizer = authorizer
+	keyVault.vaultURL = fmt.Sprintf("https://%s.vault.azure.net/", kvName)
 
-	return KeyVault{
-		vault:    kv,
-		vaultUrl: fmt.Sprintf("https://%s.vault.azure.net/", kvName),
-	}
+	return keyVault, nil
 }
 
 // Create a new connection to an Azure key vault and use authentication credentials from Azure CLI.
 // You must be logged in to Azure CLI to use this auth method.
-func NewFromCli(kvName string) KeyVault {
-	kv := keyvault.New()
-	authorizer, err := auth.NewAuthorizerFromCLI()
-
+func NewFromCLI(kvName string) (KeyVault, error) {
+	var keyVault KeyVault
+	kvResourceURL := "https://vault.azure.net"
+	token, err := cli.GetTokenFromCLI(kvResourceURL)
 	if err != nil {
-		panic(err)
+		return keyVault, err
 	}
 
-	kv.Authorizer = authorizer
-
-	return KeyVault{
-		vault:    kv,
-		vaultUrl: fmt.Sprintf("https://%s.vault.azure.net/", kvName),
+	adalToken, err := token.ToADALToken()
+	if err != nil {
+		return keyVault, err
 	}
+	keyVault.BaseClient = keyvault.New()
+	keyVault.Authorizer = autorest.NewBearerAuthorizer(&adalToken)
+	keyVault.vaultURL = fmt.Sprintf("https://%s.vault.azure.net/", kvName)
+
+	return keyVault, nil
 }
 
 // GetCertificate downloads a certificate and private key from the given Azure key vault.
 func (v KeyVault) GetCertificate(ctx context.Context, certName string, secretVersion string, certPassword string) (*x509.Certificate, *rsa.PrivateKey, error) {
-	res, err := v.vault.GetSecret(ctx, v.vaultUrl, certName, secretVersion)
+	res, err := v.GetSecret(ctx, v.vaultURL, certName, secretVersion)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -77,7 +91,7 @@ func (v KeyVault) GetCertificate(ctx context.Context, certName string, secretVer
 	// Decode pfx to x509.Certificate and rsa.PublicKey
 	keyIface, cert, err := pkcs12.Decode(pfx, certPassword)
 	if err != nil {
-		return nil, nil, errors.Errorf("failed to parse pkcs12", err)
+		return nil, nil, errors.Errorf("failed to parse pkcs12: %v", err)
 	}
 	key, ok := keyIface.(*rsa.PrivateKey)
 	if !ok {
@@ -92,11 +106,11 @@ func (v KeyVault) UploadCertificate(ctx context.Context, cert *x509.Certificate,
 	// Encode certificate to pkcs12
 	pfx, err := pkcs12.Encode(rand.Reader, key, cert, nil, certPassword)
 	if err != nil {
-		return errors.Errorf("failed to encode pkcs12 cert", err)
+		return errors.Errorf("failed to encode pkcs12 cert: %v", err)
 	}
 	base64Encoded := base64.StdEncoding.EncodeToString(pfx)
 
-	exists, err := v.checkCertExists(ctx, v.vaultUrl, certName)
+	exists, err := v.checkCertExists(ctx, v.vaultURL, certName)
 	if err != nil {
 		return err
 	}
@@ -106,7 +120,7 @@ func (v KeyVault) UploadCertificate(ctx context.Context, cert *x509.Certificate,
 	}
 
 	// Upload cert
-	_, err = v.vault.ImportCertificate(ctx, v.vaultUrl, certName, keyvault.CertificateImportParameters{
+	_, err = v.ImportCertificate(ctx, v.vaultURL, certName, keyvault.CertificateImportParameters{
 		Base64EncodedCertificate: &base64Encoded,
 		Password:                 &certPassword,
 	})
@@ -116,7 +130,7 @@ func (v KeyVault) UploadCertificate(ctx context.Context, cert *x509.Certificate,
 
 func (v KeyVault) checkCertExists(ctx context.Context, baseURL, certName string) (bool, error) {
 
-	_, err := v.vault.GetCertificate(ctx, baseURL, certName, "")
+	_, _, err := v.GetCertificate(ctx, baseURL, certName, "")
 	if err != nil {
 		if detailedErr, ok := err.(autorest.DetailedError); ok {
 			if detailedErr.StatusCode == 404 {
