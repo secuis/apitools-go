@@ -146,7 +146,7 @@ func (a *AccountConn) ListBlobsByPattern(ctx context.Context, container string, 
 	return containerConn.ListBlobsByPattern(ctx, pattern)
 }
 
-func (a *AccountConn) UploadBlob(ctx context.Context, container string, reader io.Reader, blobName string) error {
+func (a *AccountConn) TruncateBlob(ctx context.Context, container string, reader io.Reader, blobName string) error {
 	containerConn, exist := a.containers[container]
 	if !exist {
 		var err error
@@ -155,5 +155,17 @@ func (a *AccountConn) UploadBlob(ctx context.Context, container string, reader i
 			return err
 		}
 	}
-	return containerConn.UploadBlob(ctx, reader, blobName)
+	return containerConn.TruncateBlob(ctx, reader, blobName)
+}
+
+func (a *AccountConn) AppendBlob(ctx context.Context, container string, reader io.Reader, blobName string) error {
+	containerConn, exist := a.containers[container]
+	if !exist {
+		var err error
+		containerConn, err = a.NewContainer(container)
+		if err != nil {
+			return err
+		}
+	}
+	return containerConn.AppendBlob(ctx, reader, blobName)
 }

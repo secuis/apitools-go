@@ -87,13 +87,22 @@ func (bs *BlobStorage) ListBlobsByPattern(ctx context.Context, account string, c
 	return acc.ListBlobsByPattern(ctx, container, pattern)
 }
 
-func (bs *BlobStorage) UploadBlob(ctx context.Context, account string, container string, reader io.Reader, blobName string) error {
-
+func (bs *BlobStorage) TruncateBlob(ctx context.Context, account string, container string, reader io.Reader, blobName string) error {
 	acc, ok := bs.accounts[account]
 
 	if !ok {
 		return ErrUnknownStorageAccount
 	}
 
-	return acc.UploadBlob(ctx, container, reader, blobName)
+	return acc.TruncateBlob(ctx, container, reader, blobName)
+}
+
+func (bs *BlobStorage) AppendBlob(ctx context.Context, account string, container string, reader io.Reader, blobName string) error {
+	acc, ok := bs.accounts[account]
+
+	if !ok {
+		return ErrUnknownStorageAccount
+	}
+
+	return acc.AppendBlob(ctx, container, reader, blobName)
 }

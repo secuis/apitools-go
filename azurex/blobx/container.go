@@ -208,7 +208,7 @@ func (c *ContainerConn) ListBlobsByPattern(ctx context.Context, pattern string) 
 	return matchingBlobNames, nil
 }
 
-func (c *ContainerConn) UploadBlob(ctx context.Context, reader io.Reader, blobName string) error {
+func (c *ContainerConn) TruncateBlob(ctx context.Context, reader io.Reader, blobName string) error {
 	blob := c.container.GetBlobReference(blobName)
 	// if blob.Exists() {}
 
@@ -219,6 +219,8 @@ func (c *ContainerConn) UploadBlob(ctx context.Context, reader io.Reader, blobNa
 
 	blobUrl := azblob.NewBlockBlobURL(*parsedUrl, c.pipe)
 
+	// could not use the blob.CreateBlockBlobFromReader() since it does -> io.Copy(&buf, blob),
+	// which makes it a big risk to give memory problems
 	resp, err := azblob.UploadStreamToBlockBlob(ctx, reader, blobUrl, azblob.UploadStreamToBlockBlobOptions{
 		BufferSize: 1 * 1024 * 1024,
 		MaxBuffers: 3,
@@ -230,6 +232,35 @@ func (c *ContainerConn) UploadBlob(ctx context.Context, reader io.Reader, blobNa
 
 	if resp.Response().StatusCode != 201 {
 		return ErrUploadFailed
+	}
+
+	return nil
+}
+
+func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobName string) error {
+	blob := c.container.GetBlobReference(blobName)
+
+	exist, err := blob.Exists()
+	if err != nil {
+		return err
+	}
+
+	if !exist {
+		if err := blob.PutAppendBlob(&storage.PutBlobOptions{}); err != nil {
+			return err
+		}
+	}
+
+	buf := make([]byte, 1 * 1024 * 1024)
+	for {
+		_, err := reader.Read(buf)
+		if err == io.EOF {
+			break
+		}
+
+		if err := blob.AppendBlock(buf, &storage.AppendBlockOptions{}); err != nil {
+			return err
+		}
 	}
 
 	return nil
