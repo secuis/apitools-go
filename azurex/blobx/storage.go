@@ -5,26 +5,15 @@ import (
 	"io"
 )
 
-// BlobStorage provides access to multiple storage accounts at once
-// Calling a function essentially forwards the request to the underlying account
-// If no such account is found, ErrUnknownStorageAccount is returned
-type Storage interface {
-	BlobReader(ctx context.Context, account string, container string, blob string) (io.ReadCloser, error)
-	BlobBytes(ctx context.Context, account string, container string, blob string) ([]byte, error)
-	ListBlobs(ctx context.Context, account string, container string, prefix string) ([]string, error)
-	ListBlobsByPattern(ctx context.Context, account string, container string, pattern string) ([]string, error)
-	UploadBlob(ctx context.Context, account string, container string, reader io.Reader, blobName string) error
-}
-
-type blobStorage struct {
-	accounts map[string]StorageAccount
+type BlobStorage struct {
+	accounts map[string]*AccountConn
 }
 
 // A collection of storage accounts
 // Send in confs for all blob storage accounts you want to connect to
-func New(confs []*AccountConfig) (Storage, error) {
-	s := &blobStorage{
-		accounts: map[string]StorageAccount{},
+func New(confs []*AccountConfig) (*BlobStorage, error) {
+	s := &BlobStorage{
+		accounts: map[string]*AccountConn{},
 	}
 
 	for _, c := range confs {
@@ -38,7 +27,27 @@ func New(confs []*AccountConfig) (Storage, error) {
 	return s, nil
 }
 
-func (bs *blobStorage) BlobReader(ctx context.Context, account string, container string, blob string) (io.ReadCloser, error) {
+func (bs *BlobStorage) GetContainerSASURI(ctx context.Context, account string, container string, opts SASOptions) (string, error) {
+	acc, ok := bs.accounts[account]
+
+	if !ok {
+		return "", ErrUnknownStorageAccount
+	}
+
+	return acc.GetContainerSASURI(ctx, container, opts)
+}
+
+func (bs *BlobStorage) GetBlobSASURI(ctx context.Context, account string, container string, blobName string, opts SASOptions) (string, error) {
+	acc, ok := bs.accounts[account]
+
+	if !ok {
+		return "", ErrUnknownStorageAccount
+	}
+
+	return acc.GetBlobSASURI(ctx, container, blobName, opts)
+}
+
+func (bs *BlobStorage) BlobReader(ctx context.Context, account string, container string, blob string) (io.ReadCloser, error) {
 	acc, ok := bs.accounts[account]
 
 	if !ok {
@@ -48,7 +57,7 @@ func (bs *blobStorage) BlobReader(ctx context.Context, account string, container
 	return acc.BlobReader(ctx, container, blob)
 }
 
-func (bs *blobStorage) BlobBytes(ctx context.Context, account string, container string, blob string) ([]byte, error) {
+func (bs *BlobStorage) BlobBytes(ctx context.Context, account string, container string, blob string) ([]byte, error) {
 	acc, ok := bs.accounts[account]
 
 	if !ok {
@@ -58,7 +67,7 @@ func (bs *blobStorage) BlobBytes(ctx context.Context, account string, container 
 	return acc.BlobBytes(ctx, container, blob)
 }
 
-func (bs *blobStorage) ListBlobs(ctx context.Context, account string, container string, prefix string) ([]string, error) {
+func (bs *BlobStorage) ListBlobs(ctx context.Context, account string, container string, prefix string) ([]string, error) {
 	acc, ok := bs.accounts[account]
 
 	if !ok {
@@ -68,7 +77,7 @@ func (bs *blobStorage) ListBlobs(ctx context.Context, account string, container 
 	return acc.ListBlobs(ctx, container, prefix)
 }
 
-func (bs *blobStorage) ListBlobsByPattern(ctx context.Context, account string, container string, pattern string) ([]string, error) {
+func (bs *BlobStorage) ListBlobsByPattern(ctx context.Context, account string, container string, pattern string) ([]string, error) {
 	acc, ok := bs.accounts[account]
 
 	if !ok {
@@ -78,13 +87,22 @@ func (bs *blobStorage) ListBlobsByPattern(ctx context.Context, account string, c
 	return acc.ListBlobsByPattern(ctx, container, pattern)
 }
 
-func (bs *blobStorage) UploadBlob(ctx context.Context, account string, container string, reader io.Reader, blobName string) error {
-
+func (bs *BlobStorage) TruncateBlob(ctx context.Context, account string, container string, reader io.Reader, blobName string) error {
 	acc, ok := bs.accounts[account]
 
 	if !ok {
 		return ErrUnknownStorageAccount
 	}
 
-	return acc.UploadBlob(ctx, container, reader, blobName)
+	return acc.TruncateBlob(ctx, container, reader, blobName)
+}
+
+func (bs *BlobStorage) AppendBlob(ctx context.Context, account string, container string, reader io.Reader, blobName string) error {
+	acc, ok := bs.accounts[account]
+
+	if !ok {
+		return ErrUnknownStorageAccount
+	}
+
+	return acc.AppendBlob(ctx, container, reader, blobName)
 }

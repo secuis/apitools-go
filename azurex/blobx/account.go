@@ -1,18 +1,12 @@
 package blobx
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"net/url"
-	"path"
-	"strings"
 	"sync"
 
-	"github.com/Azure/azure-pipeline-go/pipeline"
-	"github.com/Azure/azure-storage-blob-go/azblob"
-	"github.com/pkg/errors"
+	"github.com/Azure/azure-sdk-for-go/storage"
 	"gopkg.in/go-playground/validator.v9"
 )
 
@@ -21,178 +15,144 @@ type AccountConfig struct {
 	Key  string `validate:"required,min=2"`
 }
 
-type StorageAccount interface {
-	// BlobReader returns an io.ReadCloser which can be used to read the content of a blob
-	BlobReader(ctx context.Context, container string, blob string) (io.ReadCloser, error)
-
-	// BlobBytes returns the bytes of a blob
-	BlobBytes(ctx context.Context, container string, blob string) ([]byte, error)
-
-	// ListBlobs returns a list of blob names with the provided prefix that was found in the provided container
-	ListBlobs(ctx context.Context, container string, prefix string) ([]string, error)
-
-	// ListBlobsByPattern returns a list of blob names given the provided pattern.
-	// The provided pattern is used to match blob names using the path.Match function
-	ListBlobsByPattern(ctx context.Context, container string, pattern string) ([]string, error)
-
-	// UploadBlob takes a reader of a blob to be stream-uploaded to an azure blob storage
-	UploadBlob(ctx context.Context, container string, reader io.Reader, blobName string) error
+type AccountConn struct {
+	name         string
+	containers   map[string]*ContainerConn
+	blobService  storage.BlobStorageClient
+	containerMtx sync.RWMutex
 }
 
-type storageAccount struct {
-	// Pipelines are threadsafe and may be shared
-	pipeline        pipeline.Pipeline
-	name            string
-	containerURLs   map[string]*azblob.ContainerURL
-	containerURLMtx sync.RWMutex
-}
-
-// NewAccount returns an Azure implementation of a StorageAccount
-func NewAccount(config *AccountConfig) (StorageAccount, error) {
+// NewAccount returns an Azure implementation of a Storage account
+func NewAccount(config *AccountConfig) (*AccountConn, error) {
 	v := validator.New()
 	if err := v.Struct(config); err != nil {
-		return nil, errors.Errorf("Config error: " + err.Error())
+		return nil, fmt.Errorf("config error: %v", err)
 	}
 
-	a := &storageAccount{
-		containerURLs: map[string]*azblob.ContainerURL{},
-		name:          config.Name,
-	}
-
-	credential, err := azblob.NewSharedKeyCredential(config.Name, config.Key)
+	client, err := storage.NewBasicClient(config.Name, config.Key)
 	if err != nil {
-		return nil, errors.Errorf("Invalid credentials with error: " + err.Error())
+		return nil, fmt.Errorf("could not connect to azure, err: %v", err)
 	}
 
-	a.pipeline = azblob.NewPipeline(credential, azblob.PipelineOptions{})
-
-	return a, nil
+	return &AccountConn{
+		containers:  map[string]*ContainerConn{},
+		name:        config.Name,
+		blobService: client.GetBlobService(),
+	}, nil
 }
 
-func (sa *storageAccount) newContainer(containerName string) *azblob.ContainerURL {
-	URL, _ := url.Parse(fmt.Sprintf("https://%s.blob.core.windows.net/%s", sa.name, containerName))
-	newURL := azblob.NewContainerURL(*URL, sa.pipeline)
-	return &newURL
+// Get the connection to a container in the storage account.
+func (a *AccountConn) NewContainer(containerName string) (*ContainerConn, error) {
+	a.containerMtx.Lock()
+	defer a.containerMtx.Unlock()
+
+	containerConn, err := NewContainerConn(a.blobService, containerName)
+	if err != nil {
+		return nil, err
+	}
+
+	a.containers[containerName] = containerConn
+	return containerConn, nil
 }
 
-func (sa *storageAccount) containerURL(containerName string) (*azblob.ContainerURL, error) {
-	sa.containerURLMtx.Lock()
-	defer sa.containerURLMtx.Unlock()
-
-	if _, ok := sa.containerURLs[containerName]; ok {
-		return sa.containerURLs[containerName], nil
-	}
-
-	sa.containerURLs[containerName] = sa.newContainer(containerName)
-
-	if sa.containerURLs[containerName] == nil {
-		return nil, errors.Errorf("Could not create container url for container %s", containerName)
-	}
-
-	return sa.containerURLs[containerName], nil
-}
-
-func (sa *storageAccount) BlobReader(ctx context.Context, container string, blob string) (io.ReadCloser, error) {
-	cURL, err := sa.containerURL(container)
-	if err != nil {
-		return nil, err
-	}
-
-	bURL := cURL.NewBlobURL(blob)
-	resp, err := bURL.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false)
-	if err != nil {
-		return nil, err
-	}
-
-	return resp.Body(azblob.RetryReaderOptions{MaxRetryRequests: 20}), nil
-}
-
-func (sa *storageAccount) BlobBytes(ctx context.Context, container string, blob string) ([]byte, error) {
-	reader, err := sa.BlobReader(ctx, container, blob)
-
-	if err != nil {
-		return nil, err
-	}
-
-	buf := bytes.Buffer{}
-	_, err = buf.ReadFrom(reader)
-	if err != nil {
-		return nil, err
-	}
-
-	_ = reader.Close()
-
-	return buf.Bytes(), nil
-}
-
-func (sa *storageAccount) ListBlobs(ctx context.Context, container string, prefix string) ([]string, error) {
-	var blobNames []string
-
-	cURL, err := sa.containerURL(container)
-	if err != nil {
-		return nil, err
-	}
-
-	response, err := cURL.ListBlobsFlatSegment(ctx, azblob.Marker{}, azblob.ListBlobsSegmentOptions{Prefix: prefix})
-	if err != nil {
-		return nil, err
-	}
-
-	for _, blob := range response.Segment.BlobItems {
-		blobNames = append(blobNames, blob.Name)
-	}
-
-	return blobNames, nil
-}
-
-func (sa *storageAccount) ListBlobsByPattern(ctx context.Context, container string, pattern string) ([]string, error) {
-	wildcardParts := strings.Split(pattern, "*")
-	dirPrefix := path.Dir(wildcardParts[0])
-
-	// Fix to work with files not in a directory
-	if dirPrefix == "." {
-		dirPrefix = ""
-	}
-
-	blobNames, err := sa.ListBlobs(ctx, container, dirPrefix)
-	if err != nil {
-		return nil, err
-	}
-
-	var matchingBlobNames []string
-	for _, blobName := range blobNames {
-		matched, err := path.Match(pattern, blobName)
+func (a *AccountConn) GetContainerSASURI(ctx context.Context, container string, opts SASOptions) (string, error) {
+	containerConn, exist := a.containers[container]
+	if !exist {
+		var err error
+		containerConn, err = a.NewContainer(container)
 		if err != nil {
-			return nil, fmt.Errorf("unexpected error when matching patterns: %w", err)
-		}
-		if matched {
-			matchingBlobNames = append(matchingBlobNames, blobName)
+			return "", err
 		}
 	}
 
-	return matchingBlobNames, nil
+	return containerConn.GetContainerSASURI(ctx, opts)
 }
 
-func (sa *storageAccount) UploadBlob(ctx context.Context, container string, reader io.Reader, blobName string) error {
-	cURL, err := sa.containerURL(container)
-	if err != nil {
-		return err
+func (a *AccountConn) GetBlobSASURI(ctx context.Context, container string, blobName string, opts SASOptions) (string, error) {
+	containerConn, exist := a.containers[container]
+	if !exist {
+		var err error
+		containerConn, err = a.NewContainer(container)
+		if err != nil {
+			return "", err
+		}
 	}
 
-	bURL := cURL.NewBlockBlobURL(blobName)
+	return containerConn.GetBlobSASURI(ctx, blobName, opts)
+}
 
-	resp, err := azblob.UploadStreamToBlockBlob(ctx, reader, bURL, azblob.UploadStreamToBlockBlobOptions{
-		BufferSize: 1 * 1024 * 1024,
-		MaxBuffers: 3,
-	})
-
-	if err != nil {
-		return err
+func (a *AccountConn) BlobReader(ctx context.Context, container string, blob string) (io.ReadCloser, error) {
+	containerConn, exist := a.containers[container]
+	if !exist {
+		var err error
+		containerConn, err = a.NewContainer(container)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	if resp.Response().StatusCode != 201 {
-		return ErrUploadFailed
+	return containerConn.BlobReader(ctx, blob)
+}
+
+func (a *AccountConn) BlobBytes(ctx context.Context, container string, blob string) ([]byte, error) {
+	containerConn, exist := a.containers[container]
+	if !exist {
+		var err error
+		containerConn, err = a.NewContainer(container)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return nil
+	return containerConn.BlobBytes(ctx, blob)
+}
+
+func (a *AccountConn) ListBlobs(ctx context.Context, container string, prefix string) ([]string, error) {
+	containerConn, exist := a.containers[container]
+	if !exist {
+		var err error
+		containerConn, err = a.NewContainer(container)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return containerConn.ListBlobs(ctx, prefix)
+}
+
+func (a *AccountConn) ListBlobsByPattern(ctx context.Context, container string, pattern string) ([]string, error) {
+	containerConn, exist := a.containers[container]
+	if !exist {
+		var err error
+		containerConn, err = a.NewContainer(container)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return containerConn.ListBlobsByPattern(ctx, pattern)
+}
+
+func (a *AccountConn) TruncateBlob(ctx context.Context, container string, reader io.Reader, blobName string) error {
+	containerConn, exist := a.containers[container]
+	if !exist {
+		var err error
+		containerConn, err = a.NewContainer(container)
+		if err != nil {
+			return err
+		}
+	}
+	return containerConn.TruncateBlob(ctx, reader, blobName)
+}
+
+func (a *AccountConn) AppendBlob(ctx context.Context, container string, reader io.Reader, blobName string) error {
+	containerConn, exist := a.containers[container]
+	if !exist {
+		var err error
+		containerConn, err = a.NewContainer(container)
+		if err != nil {
+			return err
+		}
+	}
+	return containerConn.AppendBlob(ctx, reader, blobName)
 }
