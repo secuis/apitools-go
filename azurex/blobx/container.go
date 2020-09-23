@@ -4,16 +4,16 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"path"
+	"strings"
+	"time"
+
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-sdk-for-go/storage"
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/pkg/errors"
 	"gopkg.in/go-playground/validator.v9"
-	"io"
-	"net/url"
-	"path"
-	"strings"
-	"time"
 )
 
 type ContainerConfig struct {
@@ -34,7 +34,7 @@ type SASOptions struct {
 }
 
 type ContainerConn struct {
-	pipe pipeline.Pipeline
+	pipe      pipeline.Pipeline
 	container *storage.Container
 }
 
@@ -53,7 +53,7 @@ func NewContainerConn(storage storage.BlobStorageClient, containerName string, p
 
 	return &ContainerConn{
 		container: container,
-		pipe: pipe,
+		pipe:      pipe,
 	}, nil
 }
 
@@ -145,8 +145,8 @@ func (c *ContainerConn) BlobReader(ctx context.Context, blobName string) (io.Rea
 }
 
 func (c *ContainerConn) BlobBytes(ctx context.Context, blob string) ([]byte, error) {
+	var err error
 	reader, err := c.BlobReader(ctx, blob)
-
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +157,9 @@ func (c *ContainerConn) BlobBytes(ctx context.Context, blob string) ([]byte, err
 		return nil, err
 	}
 
-	_ = reader.Close()
+	if err := reader.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close blob bytes reader, %v", err)
+	}
 
 	return buf.Bytes(), nil
 }
@@ -210,31 +212,13 @@ func (c *ContainerConn) ListBlobsByPattern(ctx context.Context, pattern string) 
 
 func (c *ContainerConn) TruncateBlob(ctx context.Context, reader io.Reader, blobName string) error {
 	blob := c.container.GetBlobReference(blobName)
-	// if blob.Exists() {}
-
-	parsedUrl, err := url.ParseRequestURI(blob.GetURL())
-	if err != nil {
+	if _, err := blob.DeleteIfExists(&storage.DeleteBlobOptions{
+		Timeout: 15,
+	}); err != nil {
 		return err
 	}
 
-	blobUrl := azblob.NewBlockBlobURL(*parsedUrl, c.pipe)
-
-	// could not use the blob.CreateBlockBlobFromReader() since it does -> io.Copy(&buf, blob),
-	// which makes it a big risk to give memory problems
-	resp, err := azblob.UploadStreamToBlockBlob(ctx, reader, blobUrl, azblob.UploadStreamToBlockBlobOptions{
-		BufferSize: 1 * 1024 * 1024,
-		MaxBuffers: 3,
-	})
-
-	if err != nil {
-		return err
-	}
-
-	if resp.Response().StatusCode != 201 {
-		return ErrUploadFailed
-	}
-
-	return nil
+	return c.AppendBlob(ctx, reader, blobName)
 }
 
 func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobName string) error {
@@ -251,7 +235,7 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 		}
 	}
 
-	buf := make([]byte, 1 * 1024 * 1024)
+	buf := make([]byte, 1*1024*1024)
 	for {
 		_, err := reader.Read(buf)
 		if err == io.EOF {
