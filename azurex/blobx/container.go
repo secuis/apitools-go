@@ -9,10 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-sdk-for-go/storage"
-	"github.com/Azure/azure-storage-blob-go/azblob"
-	"github.com/pkg/errors"
 	"gopkg.in/go-playground/validator.v9"
 )
 
@@ -34,13 +31,12 @@ type SASOptions struct {
 }
 
 type ContainerConn struct {
-	pipe      pipeline.Pipeline
 	container *storage.Container
 }
 
 // Get a connection to a container in an azure storage account.
 // Use this func if you already have a connection to an Azure storage account.
-func NewContainerConn(storage storage.BlobStorageClient, containerName string, pipe pipeline.Pipeline) (*ContainerConn, error) {
+func NewContainerConn(storage storage.BlobStorageClient, containerName string) (*ContainerConn, error) {
 	container := storage.GetContainerReference(containerName)
 	exists, err := container.Exists()
 	if err != nil {
@@ -53,7 +49,6 @@ func NewContainerConn(storage storage.BlobStorageClient, containerName string, p
 
 	return &ContainerConn{
 		container: container,
-		pipe:      pipe,
 	}, nil
 }
 
@@ -70,15 +65,7 @@ func NewAccountContainerConn(conf ContainerConfig) (*ContainerConn, error) {
 		return nil, fmt.Errorf("could not connect to azure, err: %v", err)
 	}
 
-	// pipeline is needed for uploading big files..
-	credential, err := azblob.NewSharedKeyCredential(conf.AccountName, conf.AccountKey)
-	if err != nil {
-		return nil, errors.Errorf("Invalid credentials with error: " + err.Error())
-	}
-
-	pipe := azblob.NewPipeline(credential, azblob.PipelineOptions{})
-
-	return NewContainerConn(client.GetBlobService(), conf.ContainerName, pipe)
+	return NewContainerConn(client.GetBlobService(), conf.ContainerName)
 }
 
 func (c *ContainerConn) GetContainerSASURI(ctx context.Context, opts SASOptions) (string, error) {

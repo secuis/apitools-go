@@ -3,9 +3,6 @@ package blobx
 import (
 	"context"
 	"fmt"
-	"github.com/Azure/azure-pipeline-go/pipeline"
-	"github.com/Azure/azure-storage-blob-go/azblob"
-	"github.com/pkg/errors"
 	"io"
 	"sync"
 
@@ -21,7 +18,6 @@ type AccountConfig struct {
 type AccountConn struct {
 	name         string
 	containers   map[string]*ContainerConn
-	pipe         pipeline.Pipeline
 	blobService  storage.BlobStorageClient
 	containerMtx sync.RWMutex
 }
@@ -38,19 +34,10 @@ func NewAccount(config *AccountConfig) (*AccountConn, error) {
 		return nil, fmt.Errorf("could not connect to azure, err: %v", err)
 	}
 
-	// pipeline is needed for uploading big files
-	credential, err := azblob.NewSharedKeyCredential(config.Name, config.Key)
-	if err != nil {
-		return nil, errors.Errorf("Invalid credentials with error: " + err.Error())
-	}
-
-	pipe := azblob.NewPipeline(credential, azblob.PipelineOptions{})
-
 	return &AccountConn{
 		containers:  map[string]*ContainerConn{},
 		name:        config.Name,
 		blobService: client.GetBlobService(),
-		pipe: pipe,
 	}, nil
 }
 
@@ -59,7 +46,7 @@ func (a *AccountConn) NewContainer(containerName string) (*ContainerConn, error)
 	a.containerMtx.Lock()
 	defer a.containerMtx.Unlock()
 
-	containerConn, err := NewContainerConn(a.blobService, containerName, a.pipe)
+	containerConn, err := NewContainerConn(a.blobService, containerName)
 	if err != nil {
 		return nil, err
 	}

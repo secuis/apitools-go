@@ -4,9 +4,7 @@ go 1.13
 
 require (
 	dev.azure.com/securitasintelligentservices/insights/_git/sispbgo.git v0.1.14
-	github.com/Azure/azure-pipeline-go v0.2.2
 	github.com/Azure/azure-sdk-for-go v46.3.0+incompatible
-	github.com/Azure/azure-storage-blob-go v0.8.0
 	github.com/Azure/go-autorest/autorest v0.11.0
 	github.com/Azure/go-autorest/autorest/azure/auth v0.5.1 // indirect
 	github.com/Azure/go-autorest/autorest/azure/cli v0.4.0
