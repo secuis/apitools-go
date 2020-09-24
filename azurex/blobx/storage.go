@@ -106,3 +106,27 @@ func (bs *BlobStorage) AppendBlob(ctx context.Context, account string, container
 
 	return acc.AppendBlob(ctx, container, reader, blobName)
 }
+
+// blobname is the name of the blob to create a lockfile for
+// if lockfile already exist LockfileAlreadyExist error will be returned
+func (bs *BlobStorage) CreateLockFile(ctx context.Context, account string, container string, blobName string) error {
+	acc, ok := bs.accounts[account]
+
+	if !ok {
+		return ErrUnknownStorageAccount
+	}
+
+	return acc.CreateLockFile(ctx, container, blobName)
+}
+
+// blobname is the name of the blob to delete a lockfile for
+// will not give an error if the lockfile does not exist
+func (bs *BlobStorage) DeleteLockFile(ctx context.Context, account string, container string, blobName string) error {
+	acc, ok := bs.accounts[account]
+
+	if !ok {
+		return ErrUnknownStorageAccount
+	}
+
+	return acc.DeleteLockFile(ctx, container, blobName)
+}

@@ -236,3 +236,42 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 
 	return nil
 }
+
+// blobname is the name of the blob to create a lockfile for
+// if lockfile already exist LockfileAlreadyExist error will be returned
+func (c *ContainerConn) CreateLockFile(ctx context.Context, blobName string) error {
+	lockBlobName := fmt.Sprintf("%s.%s", blobName, ".LOCK")
+	blob := c.container.GetBlobReference(lockBlobName)
+
+	exist, err := blob.Exists()
+	if err != nil {
+		return err
+	}
+
+	if exist {
+		return LockfileAlreadyExist
+	}
+
+	if err := blob.PutAppendBlob(&storage.PutBlobOptions{
+		Timeout: 15,
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// blobname is the name of the blob to delete a lockfile for
+// will not give an error if the lockfile does not exist
+func (c *ContainerConn) DeleteLockFile(ctx context.Context, blobName string) error {
+	lockBlobName := fmt.Sprintf("%s.%s", blobName, ".LOCK")
+	blob := c.container.GetBlobReference(lockBlobName)
+
+	if _, err := blob.DeleteIfExists(&storage.DeleteBlobOptions{
+		Timeout: 15,
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}

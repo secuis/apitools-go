@@ -156,3 +156,31 @@ func (a *AccountConn) AppendBlob(ctx context.Context, container string, reader i
 	}
 	return containerConn.AppendBlob(ctx, reader, blobName)
 }
+
+// blobname is the name of the blob to create a lockfile for
+// if lockfile already exist LockfileAlreadyExist error will be returned
+func (a *AccountConn) CreateLockFile(ctx context.Context, container string, blobName string) error {
+	containerConn, exist := a.containers[container]
+	if !exist {
+		var err error
+		containerConn, err = a.NewContainer(container)
+		if err != nil {
+			return err
+		}
+	}
+	return containerConn.CreateLockFile(ctx, blobName)
+}
+
+// blobname is the name of the blob to delete a lockfile for
+// will not give an error if the lockfile does not exist
+func (a *AccountConn) DeleteLockFile(ctx context.Context, container string, blobName string) error {
+	containerConn, exist := a.containers[container]
+	if !exist {
+		var err error
+		containerConn, err = a.NewContainer(container)
+		if err != nil {
+			return err
+		}
+	}
+	return containerConn.DeleteLockFile(ctx, blobName)
+}
