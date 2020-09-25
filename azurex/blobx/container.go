@@ -214,6 +214,7 @@ func (c *ContainerConn) TruncateBlob(ctx context.Context, reader io.Reader, blob
 // this method will handle acquire and release of the lease of the file
 // if you already have the lease - send in the current leaseID
 func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobName string, leaseId string) error {
+	releaseLease := false
 	leaseStr := leaseId
 	blob := c.container.GetBlobReference(blobName)
 
@@ -229,6 +230,7 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 	}
 
 	if leaseStr == "" {
+		releaseLease = true
 		leaseStr, err = c.AcquireLease(ctx, blobName)
 		if err != nil {
 			return err
@@ -248,7 +250,11 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 		}
 	}
 
-	return c.ReleaseLease(ctx, blobName, leaseStr)
+	if releaseLease {
+		return c.ReleaseLease(ctx, blobName, leaseStr)
+	}
+
+	return nil
 }
 
 // returns the leaseId for the file, and error if one occurred
