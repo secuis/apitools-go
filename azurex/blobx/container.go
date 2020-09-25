@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/google/uuid"
 	"io"
 	"path"
 	"strings"
@@ -197,7 +198,9 @@ func (c *ContainerConn) ListBlobsByPattern(ctx context.Context, pattern string) 
 	return matchingBlobNames, nil
 }
 
-func (c *ContainerConn) TruncateBlob(ctx context.Context, reader io.Reader, blobName string) error {
+// this method will handle acquire and release of the lease of the file
+// if you already have the lease - then send in the leaseID
+func (c *ContainerConn) TruncateBlob(ctx context.Context, reader io.Reader, blobName string, leaseId string) error {
 	blob := c.container.GetBlobReference(blobName)
 	if _, err := blob.DeleteIfExists(&storage.DeleteBlobOptions{
 		Timeout: 15,
@@ -205,10 +208,13 @@ func (c *ContainerConn) TruncateBlob(ctx context.Context, reader io.Reader, blob
 		return err
 	}
 
-	return c.AppendBlob(ctx, reader, blobName)
+	return c.AppendBlob(ctx, reader, blobName, leaseId)
 }
 
-func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobName string) error {
+// this method will handle acquire and release of the lease of the file
+// if you already have the lease - send in the current leaseID
+func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobName string, leaseId string) error {
+	leaseStr := leaseId
 	blob := c.container.GetBlobReference(blobName)
 
 	exist, err := blob.Exists()
@@ -222,6 +228,13 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 		}
 	}
 
+	if leaseStr == "" {
+		leaseStr, err = c.AcquireLease(ctx, blobName)
+		if err != nil {
+			return err
+		}
+	}
+
 	buf := make([]byte, 1*1024*1024)
 	for {
 		_, err := reader.Read(buf)
@@ -229,49 +242,29 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 			break
 		}
 
-		if err := blob.AppendBlock(buf, &storage.AppendBlockOptions{}); err != nil {
+		if err := blob.AppendBlock(buf, &storage.AppendBlockOptions{
+			LeaseID: leaseStr}); err != nil {
 			return err
 		}
 	}
 
-	return nil
+	return c.ReleaseLease(ctx, blobName, leaseStr)
 }
 
-// blobname is the name of the blob to create a lockfile for
-// if lockfile already exist LockfileAlreadyExist error will be returned
-func (c *ContainerConn) CreateLockFile(ctx context.Context, blobName string) error {
-	lockBlobName := fmt.Sprintf("%s.%s", blobName, ".LOCK")
-	blob := c.container.GetBlobReference(lockBlobName)
+// returns the leaseId for the file, and error if one occurred
+func (c *ContainerConn) AcquireLease(ctx context.Context, blobName string) (string, error) {
+	blob := c.container.GetBlobReference(blobName)
+	randomLeaseId := uuid.New()
 
-	exist, err := blob.Exists()
-	if err != nil {
-		return err
-	}
-
-	if exist {
-		return LockfileAlreadyExist
-	}
-
-	if err := blob.PutAppendBlob(&storage.PutBlobOptions{
+	return blob.AcquireLease(-1, randomLeaseId.String(), &storage.LeaseOptions{
 		Timeout: 15,
-	}); err != nil {
-		return err
-	}
-
-	return nil
+	})
 }
 
-// blobname is the name of the blob to delete a lockfile for
-// will not give an error if the lockfile does not exist
-func (c *ContainerConn) DeleteLockFile(ctx context.Context, blobName string) error {
-	lockBlobName := fmt.Sprintf("%s.%s", blobName, ".LOCK")
-	blob := c.container.GetBlobReference(lockBlobName)
+func (c *ContainerConn) ReleaseLease(ctx context.Context, blobName string, leaseId string) error {
+	blob := c.container.GetBlobReference(blobName)
 
-	if _, err := blob.DeleteIfExists(&storage.DeleteBlobOptions{
+	return blob.ReleaseLease(leaseId, &storage.LeaseOptions{
 		Timeout: 15,
-	}); err != nil {
-		return err
-	}
-
-	return nil
+	})
 }

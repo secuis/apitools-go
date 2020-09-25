@@ -16,6 +16,7 @@ require (
 	github.com/gogo/status v1.1.0
 	github.com/golang-migrate/migrate/v4 v4.11.0
 	github.com/google/go-cmp v0.5.1 // indirect
+	github.com/google/uuid v1.1.2
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.0.0-beta.3 // indirect
 	github.com/leodido/go-urn v1.2.0 // indirect
 	github.com/pkg/errors v0.9.1

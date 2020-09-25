@@ -87,46 +87,47 @@ func (bs *BlobStorage) ListBlobsByPattern(ctx context.Context, account string, c
 	return acc.ListBlobsByPattern(ctx, container, pattern)
 }
 
-func (bs *BlobStorage) TruncateBlob(ctx context.Context, account string, container string, reader io.Reader, blobName string) error {
+// this method will handle acquire and release of the lease of the file
+// if you already have the lease - then send in the leaseID
+func (bs *BlobStorage) TruncateBlob(ctx context.Context, account string, container string, reader io.Reader, blobName string, leaseId string) error {
 	acc, ok := bs.accounts[account]
 
 	if !ok {
 		return ErrUnknownStorageAccount
 	}
 
-	return acc.TruncateBlob(ctx, container, reader, blobName)
+	return acc.TruncateBlob(ctx, container, reader, blobName, leaseId)
 }
 
-func (bs *BlobStorage) AppendBlob(ctx context.Context, account string, container string, reader io.Reader, blobName string) error {
+// this method will handle acquire and release of the lease of the file
+// if you already have the lease - then send in the leaseID
+func (bs *BlobStorage) AppendBlob(ctx context.Context, account string, container string, reader io.Reader, blobName string, leaseId string) error {
 	acc, ok := bs.accounts[account]
 
 	if !ok {
 		return ErrUnknownStorageAccount
 	}
 
-	return acc.AppendBlob(ctx, container, reader, blobName)
+	return acc.AppendBlob(ctx, container, reader, blobName, leaseId)
 }
 
-// blobname is the name of the blob to create a lockfile for
-// if lockfile already exist LockfileAlreadyExist error will be returned
-func (bs *BlobStorage) CreateLockFile(ctx context.Context, account string, container string, blobName string) error {
+// returns the leaseId for the file, and error if one occurred
+func (bs *BlobStorage) AcquireLease(ctx context.Context, account string, container string, blobName string) (string, error) {
 	acc, ok := bs.accounts[account]
 
 	if !ok {
-		return ErrUnknownStorageAccount
+		return "", ErrUnknownStorageAccount
 	}
 
-	return acc.CreateLockFile(ctx, container, blobName)
+	return acc.AcquireLease(ctx, container, blobName)
 }
 
-// blobname is the name of the blob to delete a lockfile for
-// will not give an error if the lockfile does not exist
-func (bs *BlobStorage) DeleteLockFile(ctx context.Context, account string, container string, blobName string) error {
+func (bs *BlobStorage) ReleaseLease(ctx context.Context, account string, container string, blobName string, leaseId string) error {
 	acc, ok := bs.accounts[account]
 
 	if !ok {
 		return ErrUnknownStorageAccount
 	}
 
-	return acc.DeleteLockFile(ctx, container, blobName)
+	return acc.ReleaseLease(ctx, container, blobName, leaseId)
 }
