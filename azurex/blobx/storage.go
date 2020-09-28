@@ -87,22 +87,47 @@ func (bs *BlobStorage) ListBlobsByPattern(ctx context.Context, account string, c
 	return acc.ListBlobsByPattern(ctx, container, pattern)
 }
 
-func (bs *BlobStorage) TruncateBlob(ctx context.Context, account string, container string, reader io.Reader, blobName string) error {
+// this method will handle acquire and release of the lease of the file
+// if you already have the lease - then send in the leaseID
+func (bs *BlobStorage) TruncateBlob(ctx context.Context, account string, container string, reader io.Reader, blobName string, leaseId string) error {
 	acc, ok := bs.accounts[account]
 
 	if !ok {
 		return ErrUnknownStorageAccount
 	}
 
-	return acc.TruncateBlob(ctx, container, reader, blobName)
+	return acc.TruncateBlob(ctx, container, reader, blobName, leaseId)
 }
 
-func (bs *BlobStorage) AppendBlob(ctx context.Context, account string, container string, reader io.Reader, blobName string) error {
+// this method will handle acquire and release of the lease of the file
+// if you already have the lease - then send in the leaseID
+func (bs *BlobStorage) AppendBlob(ctx context.Context, account string, container string, reader io.Reader, blobName string, leaseId string) error {
 	acc, ok := bs.accounts[account]
 
 	if !ok {
 		return ErrUnknownStorageAccount
 	}
 
-	return acc.AppendBlob(ctx, container, reader, blobName)
+	return acc.AppendBlob(ctx, container, reader, blobName, leaseId)
+}
+
+// returns the leaseId for the file, and error if one occurred
+func (bs *BlobStorage) AcquireLease(ctx context.Context, account string, container string, blobName string) (string, error) {
+	acc, ok := bs.accounts[account]
+
+	if !ok {
+		return "", ErrUnknownStorageAccount
+	}
+
+	return acc.AcquireLease(ctx, container, blobName)
+}
+
+func (bs *BlobStorage) ReleaseLease(ctx context.Context, account string, container string, blobName string, leaseId string) error {
+	acc, ok := bs.accounts[account]
+
+	if !ok {
+		return ErrUnknownStorageAccount
+	}
+
+	return acc.ReleaseLease(ctx, container, blobName, leaseId)
 }

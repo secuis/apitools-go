@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/google/uuid"
 	"io"
 	"path"
 	"strings"
@@ -197,7 +198,9 @@ func (c *ContainerConn) ListBlobsByPattern(ctx context.Context, pattern string) 
 	return matchingBlobNames, nil
 }
 
-func (c *ContainerConn) TruncateBlob(ctx context.Context, reader io.Reader, blobName string) error {
+// this method will handle acquire and release of the lease of the file
+// if you already have the lease - then send in the leaseID
+func (c *ContainerConn) TruncateBlob(ctx context.Context, reader io.Reader, blobName string, leaseId string) error {
 	blob := c.container.GetBlobReference(blobName)
 	if _, err := blob.DeleteIfExists(&storage.DeleteBlobOptions{
 		Timeout: 15,
@@ -205,10 +208,14 @@ func (c *ContainerConn) TruncateBlob(ctx context.Context, reader io.Reader, blob
 		return err
 	}
 
-	return c.AppendBlob(ctx, reader, blobName)
+	return c.AppendBlob(ctx, reader, blobName, leaseId)
 }
 
-func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobName string) error {
+// this method will handle acquire and release of the lease of the file
+// if you already have the lease - send in the current leaseID
+func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobName string, leaseId string) error {
+	releaseLease := false
+	leaseStr := leaseId
 	blob := c.container.GetBlobReference(blobName)
 
 	exist, err := blob.Exists()
@@ -222,6 +229,14 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 		}
 	}
 
+	if leaseStr == "" {
+		releaseLease = true
+		leaseStr, err = c.AcquireLease(ctx, blobName)
+		if err != nil {
+			return err
+		}
+	}
+
 	buf := make([]byte, 1*1024*1024)
 	for {
 		_, err := reader.Read(buf)
@@ -229,10 +244,33 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 			break
 		}
 
-		if err := blob.AppendBlock(buf, &storage.AppendBlockOptions{}); err != nil {
+		if err := blob.AppendBlock(buf, &storage.AppendBlockOptions{
+			LeaseID: leaseStr}); err != nil {
 			return err
 		}
 	}
 
+	if releaseLease {
+		return c.ReleaseLease(ctx, blobName, leaseStr)
+	}
+
 	return nil
+}
+
+// returns the leaseId for the file, and error if one occurred
+func (c *ContainerConn) AcquireLease(ctx context.Context, blobName string) (string, error) {
+	blob := c.container.GetBlobReference(blobName)
+	randomLeaseId := uuid.New()
+
+	return blob.AcquireLease(-1, randomLeaseId.String(), &storage.LeaseOptions{
+		Timeout: 15,
+	})
+}
+
+func (c *ContainerConn) ReleaseLease(ctx context.Context, blobName string, leaseId string) error {
+	blob := c.container.GetBlobReference(blobName)
+
+	return blob.ReleaseLease(leaseId, &storage.LeaseOptions{
+		Timeout: 15,
+	})
 }

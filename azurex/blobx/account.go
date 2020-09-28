@@ -133,7 +133,9 @@ func (a *AccountConn) ListBlobsByPattern(ctx context.Context, container string, 
 	return containerConn.ListBlobsByPattern(ctx, pattern)
 }
 
-func (a *AccountConn) TruncateBlob(ctx context.Context, container string, reader io.Reader, blobName string) error {
+// this method will handle acquire and release of the lease of the file
+// if you already have the lease - then send in the leaseID
+func (a *AccountConn) TruncateBlob(ctx context.Context, container string, reader io.Reader, blobName string, leaseId string) error {
 	containerConn, exist := a.containers[container]
 	if !exist {
 		var err error
@@ -142,10 +144,12 @@ func (a *AccountConn) TruncateBlob(ctx context.Context, container string, reader
 			return err
 		}
 	}
-	return containerConn.TruncateBlob(ctx, reader, blobName)
+	return containerConn.TruncateBlob(ctx, reader, blobName, leaseId)
 }
 
-func (a *AccountConn) AppendBlob(ctx context.Context, container string, reader io.Reader, blobName string) error {
+// this method will handle acquire and release of the lease of the file
+// if you already have the lease - then send in the leaseID
+func (a *AccountConn) AppendBlob(ctx context.Context, container string, reader io.Reader, blobName string, leaseId string) error {
 	containerConn, exist := a.containers[container]
 	if !exist {
 		var err error
@@ -154,5 +158,30 @@ func (a *AccountConn) AppendBlob(ctx context.Context, container string, reader i
 			return err
 		}
 	}
-	return containerConn.AppendBlob(ctx, reader, blobName)
+	return containerConn.AppendBlob(ctx, reader, blobName, leaseId)
+}
+
+// returns the leaseId for the file, and error if one occurred
+func (a *AccountConn) AcquireLease(ctx context.Context, container string, blobName string) (string, error) {
+	containerConn, exist := a.containers[container]
+	if !exist {
+		var err error
+		containerConn, err = a.NewContainer(container)
+		if err != nil {
+			return "", err
+		}
+	}
+	return containerConn.AcquireLease(ctx, blobName)
+}
+
+func (a *AccountConn) ReleaseLease(ctx context.Context, container string, blobName string, leaseId string) error {
+	containerConn, exist := a.containers[container]
+	if !exist {
+		var err error
+		containerConn, err = a.NewContainer(container)
+		if err != nil {
+			return err
+		}
+	}
+	return containerConn.ReleaseLease(ctx, blobName, leaseId)
 }
