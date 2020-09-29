@@ -203,6 +203,7 @@ func (c *ContainerConn) ListBlobsByPattern(ctx context.Context, pattern string) 
 func (c *ContainerConn) TruncateBlob(ctx context.Context, reader io.Reader, blobName string, leaseId string) error {
 	blob := c.container.GetBlobReference(blobName)
 	if _, err := blob.DeleteIfExists(&storage.DeleteBlobOptions{
+		LeaseID: leaseId,
 		Timeout: 15,
 	}); err != nil {
 		return err
