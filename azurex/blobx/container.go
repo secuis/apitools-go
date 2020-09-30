@@ -263,9 +263,15 @@ func (c *ContainerConn) AcquireLease(ctx context.Context, blobName string) (stri
 	blob := c.container.GetBlobReference(blobName)
 	randomLeaseId := uuid.New()
 
-	return blob.AcquireLease(-1, randomLeaseId.String(), &storage.LeaseOptions{
+	leaseId, err := blob.AcquireLease(-1, randomLeaseId.String(), &storage.LeaseOptions{
 		Timeout: 15,
 	})
+
+	if err != nil {
+		return "", ParseAzureError(err)
+	}
+
+	return leaseId, nil
 }
 
 func (c *ContainerConn) ReleaseLease(ctx context.Context, blobName string, leaseId string) error {

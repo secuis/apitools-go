@@ -1,7 +1,7 @@
 package dbmigration
 
 import (
-	"dev.azure.com/securitasintelligentservices/insights/_git/sispbgo.git/sis/rp/devpb"
+	devv1 "dev.azure.com/securitasintelligentservices/insights/_git/sispbgo.git/sis/rp/dev/v1"
 	"errors"
 	"fmt"
 	"github.com/davecgh/go-spew/spew"
@@ -34,7 +34,7 @@ func NewMigrator(log *zap.SugaredLogger, sqlConnStr, fileDir string) Migrator {
 	return s
 }
 
-func (m Migrator) Migrate() (*devpb.MigrationStatus, error) {
+func (m Migrator) Migrate() (*devv1.MigrationStatus, error) {
 	m.log.Infof("Migrating...")
 
 	status, err := m.Status()
@@ -71,25 +71,25 @@ func (m Migrator) Migrate() (*devpb.MigrationStatus, error) {
 	return m.Status()
 }
 
-func (m Migrator) Status() (*devpb.MigrationStatus, error) {
+func (m Migrator) Status() (*devv1.MigrationStatus, error) {
 	version, dirty, err := m.migrator.Version()
 	latestVersion := m.getLatestVersion()
 
 	if err != nil {
 		if err == migrate.ErrNilVersion {
-			return &devpb.MigrationStatus{
+			return &devv1.MigrationStatus{
 				Version:       0,
 				LatestVersion: latestVersion,
 				UpToDate:      false,
 				Dirty:         false,
 			}, nil
 		}
-		return &devpb.MigrationStatus{}, err
+		return &devv1.MigrationStatus{}, err
 	}
 
 	upToDate := int32(version) == latestVersion
 
-	return &devpb.MigrationStatus{
+	return &devv1.MigrationStatus{
 		Version:       uint32(version),
 		LatestVersion: latestVersion,
 		UpToDate:      upToDate,
@@ -97,17 +97,17 @@ func (m Migrator) Status() (*devpb.MigrationStatus, error) {
 	}, nil
 }
 
-func (m Migrator) ForceVersion(version int32) (*devpb.MigrationStatus, error) {
+func (m Migrator) ForceVersion(version int32) (*devv1.MigrationStatus, error) {
 	err := m.migrator.Force(int(version))
 
 	if err != nil {
-		return &devpb.MigrationStatus{}, err
+		return &devv1.MigrationStatus{}, err
 	}
 
 	return m.Status()
 }
 
-func (m Migrator) Rollback() (*devpb.MigrationStatus, error) {
+func (m Migrator) Rollback() (*devv1.MigrationStatus, error) {
 	status, err := m.Status()
 
 	if err != nil {
