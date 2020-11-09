@@ -133,9 +133,9 @@ func (a *AccountConn) ListBlobsByPattern(ctx context.Context, container string, 
 	return containerConn.ListBlobsByPattern(ctx, pattern)
 }
 
-// this method will handle acquire and release of the lease of the file
-// if you already have the lease - then send in the leaseID
-func (a *AccountConn) TruncateBlob(ctx context.Context, container string, reader io.Reader, blobName string, leaseId string) error {
+// delete the blob if it exist and create an empty blob with the same name
+// if you have the lease - send it in
+func (a *AccountConn) TruncateBlob(ctx context.Context, container string, blobName string, leaseId string) error {
 	containerConn, exist := a.containers[container]
 	if !exist {
 		var err error
@@ -144,7 +144,7 @@ func (a *AccountConn) TruncateBlob(ctx context.Context, container string, reader
 			return err
 		}
 	}
-	return containerConn.TruncateBlob(ctx, reader, blobName, leaseId)
+	return containerConn.TruncateBlob(ctx, blobName, leaseId)
 }
 
 // this method will handle acquire and release of the lease of the file

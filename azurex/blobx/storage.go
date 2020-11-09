@@ -87,16 +87,16 @@ func (bs *BlobStorage) ListBlobsByPattern(ctx context.Context, account string, c
 	return acc.ListBlobsByPattern(ctx, container, pattern)
 }
 
-// this method will handle acquire and release of the lease of the file
-// if you already have the lease - then send in the leaseID
-func (bs *BlobStorage) TruncateBlob(ctx context.Context, account string, container string, reader io.Reader, blobName string, leaseId string) error {
+// delete the blob if it exist and create an empty blob with the same name
+// if you have the lease - send it in
+func (bs *BlobStorage) TruncateBlob(ctx context.Context, account string, container string, blobName string, leaseId string) error {
 	acc, ok := bs.accounts[account]
 
 	if !ok {
 		return ErrUnknownStorageAccount
 	}
 
-	return acc.TruncateBlob(ctx, container, reader, blobName, leaseId)
+	return acc.TruncateBlob(ctx, container, blobName, leaseId)
 }
 
 // this method will handle acquire and release of the lease of the file

@@ -198,9 +198,9 @@ func (c *ContainerConn) ListBlobsByPattern(ctx context.Context, pattern string) 
 	return matchingBlobNames, nil
 }
 
-// this method will handle acquire and release of the lease of the file
-// if you already have the lease - then send in the leaseID
-func (c *ContainerConn) TruncateBlob(ctx context.Context, reader io.Reader, blobName string, leaseId string) error {
+// delete the blob if it exist and create an empty blob with the same name
+// if you have the lease - send it in
+func (c *ContainerConn) TruncateBlob(ctx context.Context, blobName string, leaseId string) error {
 	blob := c.container.GetBlobReference(blobName)
 	if _, err := blob.DeleteIfExists(&storage.DeleteBlobOptions{
 		LeaseID: leaseId,
@@ -209,7 +209,7 @@ func (c *ContainerConn) TruncateBlob(ctx context.Context, reader io.Reader, blob
 		return err
 	}
 
-	return c.AppendBlob(ctx, reader, blobName, leaseId)
+	return c.AppendBlob(ctx, nil, blobName, "")
 }
 
 // this method will handle acquire and release of the lease of the file
@@ -240,6 +240,11 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 
 	buf := make([]byte, 1*1024*1024)
 	for {
+		if reader == nil {
+			// someone probably just wants to create the file with no content
+			break
+		}
+
 		_, err := reader.Read(buf)
 		if err == io.EOF {
 			break
