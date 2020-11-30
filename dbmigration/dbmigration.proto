@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package sis.rp.dev.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "github.com/SecuritasCrimePrediction/apitools-go/dbmigration;dbmigration";
+
+service MigrationService {
+  // Migrate the database
+  rpc DatabaseMigrate(DatabaseMigrateRequest) returns (DatabaseMigrateResponse) {
+    option (google.api.http) = {
+      post: "/dev/db/migrate"
+      body: "*"
+    };
+  }
+  // Get db status (currently only contains migration information)
+  rpc DatabaseStatus(DatabaseStatusRequest) returns (DatabaseStatusResponse) {
+    option (google.api.http) = {
+      post: "/dev/db/status"
+      body: "*"
+    };
+  }
+
+  // Rollback database
+  rpc DatabaseRollback(DatabaseRollbackRequest) returns (DatabaseRollbackResponse) {
+    option (google.api.http) = {
+      post: "/dev/db/rollback"
+      body: "*"
+    };
+  }
+
+  // Get migration status
+  rpc DatabaseForceVersion(DatabaseForceVersionRequest) returns (DatabaseForceVersionResponse) {
+    option (google.api.http) = {
+      post: "/dev/db/force_version/{version}"
+      body: "*"
+    };
+  }
+}
+
+message MigrationStatus {
+  uint32 version = 1;
+  int32 latest_version = 2;
+  bool up_to_date = 3;
+  bool dirty = 4;
+}
+
+
+message DatabaseMigrateRequest {
+}
+message DatabaseMigrateResponse {
+  MigrationStatus status = 1;
+}
+
+message DatabaseStatusRequest {
+}
+message DatabaseStatusResponse {
+  MigrationStatus status = 1;
+}
+
+message DatabaseRollbackRequest {
+}
+message DatabaseRollbackResponse {
+  MigrationStatus status = 1;
+}
+
+message DatabaseForceVersionRequest {
+  int32 version = 1;
+}
+message DatabaseForceVersionResponse {
+  MigrationStatus status = 1;
+}
