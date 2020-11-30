@@ -1,15 +1,15 @@
 package dbmigration
 
 import (
-	devv1 "dev.azure.com/securitasintelligentservices/insights/_git/sispbgo.git/sis/rp/dev/v1"
 	"errors"
 	"fmt"
+	"io/ioutil"
+
 	"github.com/davecgh/go-spew/spew"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"go.uber.org/zap"
-	"io/ioutil"
 )
 
 type Migrator struct {
@@ -34,7 +34,7 @@ func NewMigrator(log *zap.SugaredLogger, sqlConnStr, fileDir string) Migrator {
 	return s
 }
 
-func (m Migrator) Migrate() (*devv1.MigrationStatus, error) {
+func (m Migrator) Migrate() (*MigrationStatus, error) {
 	m.log.Infof("Migrating...")
 
 	status, err := m.Status()
@@ -71,25 +71,25 @@ func (m Migrator) Migrate() (*devv1.MigrationStatus, error) {
 	return m.Status()
 }
 
-func (m Migrator) Status() (*devv1.MigrationStatus, error) {
+func (m Migrator) Status() (*MigrationStatus, error) {
 	version, dirty, err := m.migrator.Version()
 	latestVersion := m.getLatestVersion()
 
 	if err != nil {
 		if err == migrate.ErrNilVersion {
-			return &devv1.MigrationStatus{
+			return &MigrationStatus{
 				Version:       0,
 				LatestVersion: latestVersion,
 				UpToDate:      false,
 				Dirty:         false,
 			}, nil
 		}
-		return &devv1.MigrationStatus{}, err
+		return &MigrationStatus{}, err
 	}
 
 	upToDate := int32(version) == latestVersion
 
-	return &devv1.MigrationStatus{
+	return &MigrationStatus{
 		Version:       uint32(version),
 		LatestVersion: latestVersion,
 		UpToDate:      upToDate,
@@ -97,17 +97,17 @@ func (m Migrator) Status() (*devv1.MigrationStatus, error) {
 	}, nil
 }
 
-func (m Migrator) ForceVersion(version int32) (*devv1.MigrationStatus, error) {
+func (m Migrator) ForceVersion(version int32) (*MigrationStatus, error) {
 	err := m.migrator.Force(int(version))
 
 	if err != nil {
-		return &devv1.MigrationStatus{}, err
+		return &MigrationStatus{}, err
 	}
 
 	return m.Status()
 }
 
-func (m Migrator) Rollback() (*devv1.MigrationStatus, error) {
+func (m Migrator) Rollback() (*MigrationStatus, error) {
 	status, err := m.Status()
 
 	if err != nil {
