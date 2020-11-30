@@ -13,6 +13,7 @@ type MigrationService struct {
 	log *zap.SugaredLogger
 
 	mA Migrator
+	UnimplementedMigrationServiceServer
 }
 
 func NewMigrationService(log *zap.SugaredLogger, config MigrationConfig) MigrationServiceServer {
