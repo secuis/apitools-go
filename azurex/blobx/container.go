@@ -245,12 +245,12 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 			break
 		}
 
-		_, err := reader.Read(buf)
+		n, err := reader.Read(buf)
 		if err == io.EOF {
 			break
 		}
 
-		if err := blob.AppendBlock(buf, &storage.AppendBlockOptions{
+		if err := blob.AppendBlock(buf[:n], &storage.AppendBlockOptions{
 			LeaseID: leaseStr}); err != nil {
 			return err
 		}
