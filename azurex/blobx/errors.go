@@ -16,8 +16,11 @@ var (
 // todo: add more errors
 func ParseAzureError(err error) error {
 	if err != nil {
-		err := err.(storage.AzureStorageServiceError)
-		switch err.StatusCode {
+		azErr, ok := err.(storage.AzureStorageServiceError)
+		if !ok {
+			return err
+		}
+		switch azErr.StatusCode {
 		case 404:
 			return ErrBlobNotFound
 		case 409:
