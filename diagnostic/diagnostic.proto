@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package sis.rp.dev.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "github.com/SecuritasCrimePrediction/apitools-go/diagnostic;diagnostic";
+
+service DiagnosticService {
+  rpc Ping(PingRequest) returns (PingResponse) {
+    option (google.api.http) = {
+      get: "/dev/diagnostic/ping"
+    };
+  }
+}
+
+message PingRequest {
+}
+
+message PingResponse {
+  string answer = 1;
+}

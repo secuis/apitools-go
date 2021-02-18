@@ -3,6 +3,10 @@ proto:
 		--go_out=paths=source_relative:. \
 		--go-grpc_out=paths=source_relative:. \
 		dbmigration/dbmigration.proto
+	@protoc \
+		--go_out=paths=source_relative:. \
+		--go-grpc_out=paths=source_relative:. \
+		diagnostic/diagnostic.proto
 
 install:
 	@go install \
