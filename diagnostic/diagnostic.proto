@@ -9,7 +9,7 @@ option go_package = "github.com/SecuritasCrimePrediction/apitools-go/diagnostic;
 service DiagnosticService {
   rpc Ping(PingRequest) returns (PingResponse) {
     option (google.api.http) = {
-      get: "/dev/diagnostic/ping"
+      get: "/ping"
     };
   }
 }
