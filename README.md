@@ -2,6 +2,32 @@
 
 A collection of tools we use in our Golang APIs
 
+# The gRPC field mask hook
+This field mask hook check the request to the server if it has a field mask available. If the mask is available in the request it is applied to the response.
+The field mask is not validated in the hook, that needs to be done by the user, something like this:
+```
+if valid := request.GetFieldMask().IsValid(&SomeResponse{}); !valid {
+    return nil, fmt.Errorf("not valid")
+}
+```
+If the request implements a field mask with the name `field_mask` like this, the mask will be applied to the response:
+```
+message SomeRequest {
+    google.protobuf.FieldMask field_mask = 1;
+}
+```
+Add the hook like this when you create the gRPC server:
+```	
+opts := []grpc.ServerOption{
+    grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
+        fieldmaskx.UnaryServerInterceptor(),
+    )),
+    grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(
+        fieldmaskx.StreamServerInterceptor(),
+    )),
+}
+```
+
 # The gRPC notification hook
 The gRPC notification hook package can be used to send messages on different channels when an endpoint is called. It can be restricted to only send notifications when an error, or only when specific errors, occurred.
 

@@ -14,10 +14,10 @@ require (
 	github.com/go-playground/universal-translator v0.17.0 // indirect
 	github.com/gogo/status v1.1.0
 	github.com/golang-migrate/migrate/v4 v4.11.0
-	github.com/golang/protobuf v1.4.3
 	github.com/google/uuid v1.1.2
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.0.1
 	github.com/leodido/go-urn v1.2.0 // indirect
+	github.com/mennanov/fmutils v0.0.3
 	github.com/pkg/errors v0.9.1
 	go.uber.org/zap v1.15.0
 	golang.org/x/tools v0.0.0-20200914163123-ea50a3c84940 // indirect
