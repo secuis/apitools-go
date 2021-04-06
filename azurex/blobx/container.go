@@ -94,7 +94,7 @@ func (c *ContainerConn) GetBlobSASURI(ctx context.Context, blobName string, opts
 
 	exist, err := blob.Exists()
 	if err != nil {
-		return "", err
+		return "", ParseAzureError(err)
 	}
 
 	if !exist {
@@ -122,14 +122,18 @@ func (c *ContainerConn) BlobReader(ctx context.Context, blobName string) (io.Rea
 
 	exist, err := blob.Exists()
 	if err != nil {
-		return nil, err
+		return nil, ParseAzureError(err)
 	}
 
 	if !exist {
 		return nil, fmt.Errorf("blob with the name %q does not exist in this container", blobName)
 	}
 
-	return blob.Get(&storage.GetBlobOptions{})
+	readCloser, err := blob.Get(&storage.GetBlobOptions{})
+	if err != nil {
+		return nil, ParseAzureError(err)
+	}
+	return readCloser, nil
 }
 
 func (c *ContainerConn) BlobBytes(ctx context.Context, blob string) ([]byte, error) {
@@ -160,7 +164,7 @@ func (c *ContainerConn) ListBlobs(ctx context.Context, prefix string) ([]string,
 		Timeout: 15, // seconds
 	})
 	if err != nil {
-		return nil, err
+		return nil, ParseAzureError(err)
 	}
 
 	for _, blob := range resp.Blobs {
@@ -206,7 +210,7 @@ func (c *ContainerConn) TruncateBlob(ctx context.Context, blobName string, lease
 		LeaseID: leaseId,
 		Timeout: 15,
 	}); err != nil {
-		return err
+		return ParseAzureError(err)
 	}
 
 	return c.AppendBlob(ctx, nil, blobName, "")
@@ -221,12 +225,12 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 
 	exist, err := blob.Exists()
 	if err != nil {
-		return err
+		return ParseAzureError(err)
 	}
 
 	if !exist {
 		if err := blob.PutAppendBlob(&storage.PutBlobOptions{}); err != nil {
-			return err
+			return ParseAzureError(err)
 		}
 	}
 
@@ -252,7 +256,7 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 
 		if err := blob.AppendBlock(buf[:n], &storage.AppendBlockOptions{
 			LeaseID: leaseStr}); err != nil {
-			return err
+			return ParseAzureError(err)
 		}
 	}
 
