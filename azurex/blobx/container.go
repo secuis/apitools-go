@@ -242,21 +242,41 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 		}
 	}
 
-	buf := make([]byte, 1*1024*1024)
+	maxBufSize := 4 * 1024 * 1024
+	currMaxMsgSize := 0
+	eof := false
+	buf := make([]byte, maxBufSize)
 	for {
 		if reader == nil {
 			// someone probably just wants to create the file with no content
 			break
 		}
 
-		n, err := reader.Read(buf)
-		if err == io.EOF {
-			break
+		b := 0
+		for {
+			n, err := reader.Read(buf[b:])
+			if err == io.EOF {
+				eof = true
+				break
+			}
+			// guessing most of the messages will be of the approximate same size
+			// using this to not exceed the 4 MB limit for uploading blocks
+			if n > currMaxMsgSize {
+				currMaxMsgSize = n
+			}
+			b += n
+			// using max msg size * 2 to make sure the next message will not exceed the buffer
+			if b > maxBufSize-(currMaxMsgSize*2) {
+				break
+			}
 		}
 
-		if err := blob.AppendBlock(buf[:n], &storage.AppendBlockOptions{
-			LeaseID: leaseStr}); err != nil {
+		if err := blob.AppendBlock(buf[:b], &storage.AppendBlockOptions{LeaseID: leaseStr}); err != nil {
 			return ParseAzureError(err)
+		}
+
+		if eof {
+			break
 		}
 	}
 
@@ -270,9 +290,9 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 // returns the leaseId for the file, and error if one occurred
 func (c *ContainerConn) AcquireLease(ctx context.Context, blobName string) (string, error) {
 	blob := c.container.GetBlobReference(blobName)
-	randomLeaseId := uuid.New()
+	leaseIdString := uuid.New().String()
 
-	leaseId, err := blob.AcquireLease(-1, randomLeaseId.String(), &storage.LeaseOptions{
+	leaseId, err := blob.AcquireLease(-1, leaseIdString, &storage.LeaseOptions{
 		Timeout: 15,
 	})
 
