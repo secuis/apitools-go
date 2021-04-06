@@ -8,9 +8,9 @@ import (
 
 func Test_ErrorParsing(t *testing.T) {
 	err := ParseAzureError(storage.AzureStorageServiceError{
-		Code:                      "a code",
-		Message:                   "random error",
-		StatusCode:                400,
+		Code:       "a code",
+		Message:    "random error",
+		StatusCode: 400,
 	})
 	if err == nil {
 		t.Errorf("error parsing failed, it cannot handle azure errors")
