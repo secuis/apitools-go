@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/google/uuid"
 	"io"
 	"path"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/pkg/errors"
 
 	"github.com/Azure/azure-sdk-for-go/storage"
 	"gopkg.in/go-playground/validator.v9"
@@ -234,6 +236,11 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 		}
 	}
 
+	if reader == nil {
+		// someone probably just wants to create the file with no content
+		return nil
+	}
+
 	if leaseStr == "" {
 		releaseLease = true
 		leaseStr, err = c.AcquireLease(ctx, blobName)
@@ -242,20 +249,48 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 		}
 	}
 
-	buf := make([]byte, 1*1024*1024)
-	for {
-		if reader == nil {
-			// someone probably just wants to create the file with no content
-			break
+	// The max block size is determined by appendblob restrictions found here:
+	// https://docs.microsoft.com/en-us/rest/api/storageservices/append-block#remarks
+	maxBlockSize := 4 * 1024 * 1024
+	uploadBuf := make([]byte, maxBlockSize)
+	nextMsgBuf := make([]byte, maxBlockSize)
+	nextMsgLen := 0
+	eof := false
+
+	for !eof {
+
+		uploadBufLen := 0
+
+		// Copy from read buffer leftovers since last iteration
+		if nextMsgLen > 0 {
+			copy(uploadBuf, nextMsgBuf[:nextMsgLen])
+			uploadBufLen += nextMsgLen
+			nextMsgLen = 0
 		}
 
-		n, err := reader.Read(buf)
-		if err == io.EOF {
-			break
+		// Read messages from the reader until the read buffer is full
+		for {
+			n, err := reader.Read(nextMsgBuf)
+			if err != nil {
+				if err == io.EOF {
+					eof = true
+					break
+				}
+				return fmt.Errorf("unexpected read error: %v", err)
+			}
+			if n > maxBlockSize {
+				return errors.New("message exceeded 4 MB which is the limit")
+			}
+			nextMsgLen = n
+			if n+uploadBufLen > maxBlockSize {
+				// Copy contents next iteration
+				break
+			}
+			copy(uploadBuf[uploadBufLen:], nextMsgBuf[:nextMsgLen])
+			uploadBufLen += n
 		}
 
-		if err := blob.AppendBlock(buf[:n], &storage.AppendBlockOptions{
-			LeaseID: leaseStr}); err != nil {
+		if err := blob.AppendBlock(uploadBuf[:uploadBufLen], &storage.AppendBlockOptions{LeaseID: leaseStr}); err != nil {
 			return ParseAzureError(err)
 		}
 	}
@@ -270,9 +305,9 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 // returns the leaseId for the file, and error if one occurred
 func (c *ContainerConn) AcquireLease(ctx context.Context, blobName string) (string, error) {
 	blob := c.container.GetBlobReference(blobName)
-	randomLeaseId := uuid.New()
+	leaseIdString := uuid.New().String()
 
-	leaseId, err := blob.AcquireLease(-1, randomLeaseId.String(), &storage.LeaseOptions{
+	leaseId, err := blob.AcquireLease(-1, leaseIdString, &storage.LeaseOptions{
 		Timeout: 15,
 	})
 
