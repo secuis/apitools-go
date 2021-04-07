@@ -249,48 +249,42 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 		}
 	}
 
-	// The max block size is determined by appendblob restrictions found here:
-	// https://docs.microsoft.com/en-us/rest/api/storageservices/append-block#remarks
-	maxBlockSize := 4 * 1024 * 1024
-	uploadBuf := make([]byte, maxBlockSize)
-	nextMsgBuf := make([]byte, maxBlockSize)
-	nextMsgLen := 0
-	eof := false
+	var (
+		// The max block size is determined by appendblob restrictions found here:
+		// https://docs.microsoft.com/en-us/rest/api/storageservices/append-block#remarks
+		maxBlockSize = 4 * 1024 * 1024
+		nextLen      int    // length of next bytes block
+		nextBuf      []byte // contents of next bytes block (empty to begin with)
+		uploadLen    int    // length of append block to upload
+		uploadBuf    []byte // contents of append block to upload
+		readErr      error  // error from reader
+	)
+	// Note that since nextBuf contains the previous read
+	// and io.EOF only happens on empty read, nextBuf is guaranteed to be empty.
+	for readErr != io.EOF {
+		uploadLen = 0
 
-	for !eof {
+		// Read from reader until err or upload block would become too wide
+		for readErr == nil && nextLen+uploadLen < maxBlockSize {
 
-		uploadBufLen := 0
+			// Copy previously read block
+			copy(uploadBuf[uploadLen:], nextBuf[:nextLen]) // noop first block
+			uploadLen += nextLen
 
-		// Copy from read buffer leftovers since last iteration
-		if nextMsgLen > 0 {
-			copy(uploadBuf, nextMsgBuf[:nextMsgLen])
-			uploadBufLen += nextMsgLen
-			nextMsgLen = 0
+			// Read next block
+			nextLen, readErr = reader.Read(nextBuf)
+			if nextLen > maxBlockSize {
+				return errors.New("a single read block may not exceeded 4 MB limit")
+			}
 		}
 
-		// Read messages from the reader until the read buffer is full
-		for {
-			n, err := reader.Read(nextMsgBuf)
-			if err != nil {
-				if err == io.EOF {
-					eof = true
-					break
-				}
-				return fmt.Errorf("unexpected read error: %v", err)
-			}
-			if n > maxBlockSize {
-				return errors.New("message exceeded 4 MB which is the limit")
-			}
-			nextMsgLen = n
-			if n+uploadBufLen > maxBlockSize {
-				// Copy contents next iteration
-				break
-			}
-			copy(uploadBuf[uploadBufLen:], nextMsgBuf[:nextMsgLen])
-			uploadBufLen += n
+		// Check for unexpected reader errors
+		if readErr != nil && readErr != io.EOF {
+			return fmt.Errorf("unexpected read error: %v", readErr)
 		}
 
-		if err := blob.AppendBlock(uploadBuf[:uploadBufLen], &storage.AppendBlockOptions{LeaseID: leaseStr}); err != nil {
+		// Append
+		if err := blob.AppendBlock(uploadBuf[:uploadLen], &storage.AppendBlockOptions{LeaseID: leaseStr}); err != nil {
 			return ParseAzureError(err)
 		}
 	}
