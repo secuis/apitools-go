@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/google/uuid"
 	"io"
 	"path"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/pkg/errors"
 
 	"github.com/Azure/azure-sdk-for-go/storage"
 	"gopkg.in/go-playground/validator.v9"
@@ -234,6 +236,11 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 		}
 	}
 
+	if reader == nil {
+		// someone probably just wants to create the file with no content
+		return nil
+	}
+
 	if leaseStr == "" {
 		releaseLease = true
 		leaseStr, err = c.AcquireLease(ctx, blobName)
@@ -242,41 +249,49 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 		}
 	}
 
-	maxBufSize := 4 * 1024 * 1024
-	currMaxMsgSize := 0
+	// The max block size is determined by appendblob restrictions found here:
+	// https://docs.microsoft.com/en-us/rest/api/storageservices/append-block#remarks
+	maxBlockSize := 4 * 1024 * 1024
+	uploadBuf := make([]byte, maxBlockSize)
+	nextMsgBuf := make([]byte, maxBlockSize)
+	nextMsgLen := 0
 	eof := false
-	buf := make([]byte, maxBufSize)
-	for {
-		if reader == nil {
-			// someone probably just wants to create the file with no content
-			break
+
+	for !eof {
+
+		uploadBufLen := 0
+
+		// Copy from read buffer leftovers since last iteration
+		if nextMsgLen > 0 {
+			copy(uploadBuf, nextMsgBuf[:nextMsgLen])
+			uploadBufLen += nextMsgLen
+			nextMsgLen = 0
 		}
 
-		b := 0
+		// Read messages from the reader until the read buffer is full
 		for {
-			n, err := reader.Read(buf[b:])
-			if err == io.EOF {
-				eof = true
+			n, err := reader.Read(nextMsgBuf)
+			if err != nil {
+				if err == io.EOF {
+					eof = true
+					break
+				}
+				return fmt.Errorf("unexpected read error: %v", err)
+			}
+			if n > maxBlockSize {
+				return errors.New("message exceeded 4 MB which is the limit")
+			}
+			nextMsgLen = n
+			if n+uploadBufLen > maxBlockSize {
+				// Copy contents next iteration
 				break
 			}
-			// guessing most of the messages will be of the approximate same size
-			// using this to not exceed the 4 MB limit for uploading blocks
-			if n > currMaxMsgSize {
-				currMaxMsgSize = n
-			}
-			b += n
-			// using max msg size * 2 to make sure the next message will not exceed the buffer
-			if b > maxBufSize-(currMaxMsgSize*2) {
-				break
-			}
+			copy(uploadBuf[uploadBufLen:], nextMsgBuf[:nextMsgLen])
+			uploadBufLen += n
 		}
 
-		if err := blob.AppendBlock(buf[:b], &storage.AppendBlockOptions{LeaseID: leaseStr}); err != nil {
+		if err := blob.AppendBlock(uploadBuf[:uploadBufLen], &storage.AppendBlockOptions{LeaseID: leaseStr}); err != nil {
 			return ParseAzureError(err)
-		}
-
-		if eof {
-			break
 		}
 	}
 
