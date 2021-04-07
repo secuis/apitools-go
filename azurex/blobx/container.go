@@ -259,6 +259,8 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 		uploadBuf    []byte // contents of append block to upload
 		readErr      error  // error from reader
 	)
+	nextBuf = make([]byte, maxBlockSize)
+	uploadBuf = make([]byte, maxBlockSize)
 	// Note that since nextBuf contains the previous read
 	// and io.EOF only happens on empty read, nextBuf is guaranteed to be empty.
 	for readErr != io.EOF {
