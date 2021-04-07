@@ -9,10 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/pkg/errors"
-
 	"github.com/Azure/azure-sdk-for-go/storage"
+	"github.com/google/uuid"
 	"gopkg.in/go-playground/validator.v9"
 )
 
@@ -279,7 +277,7 @@ func (c *ContainerConn) AppendBlob(ctx context.Context, reader io.Reader, blobNa
 				return fmt.Errorf("unexpected read error: %v", err)
 			}
 			if n > maxBlockSize {
-				return errors.New("message exceeded 4 MB which is the limit")
+				return ErrMsgSizeTooBig
 			}
 			nextMsgLen = n
 			if n+uploadBufLen > maxBlockSize {

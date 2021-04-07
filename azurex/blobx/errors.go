@@ -6,12 +6,13 @@ import (
 )
 
 var (
-	ErrBlobNotFound          = errors.New("no blob with that name found")
-	ErrBlobBusy              = errors.New("blob is busy, can't perform this action")
-	ErrUnknownStorageAccount = errors.New("unknown storage account")
+	ErrBlobNotFound           = errors.New("no blob with that name found")
+	ErrBlobBusy               = errors.New("blob is busy, can't perform this action")
+	ErrUnknownStorageAccount  = errors.New("unknown storage account")
 	ErrBlockCountLimitReached = errors.New("block count limit reached for blob")
-	ErrUploadFailed          = errors.New("blob upload failed")
-	LockfileAlreadyExist     = errors.New("lockfile already exist")
+	ErrUploadFailed           = errors.New("blob upload failed")
+	LockfileAlreadyExist      = errors.New("lockfile already exist")
+	ErrMsgSizeTooBig          = errors.New("message exceeded 4 MB which is the limit")
 )
 
 // todo: add more errors
