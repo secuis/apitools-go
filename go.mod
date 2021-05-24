@@ -12,7 +12,6 @@ require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/dnaeon/go-vcr v1.0.1 // indirect
 	github.com/go-playground/universal-translator v0.17.0 // indirect
-	github.com/gogo/status v1.1.0
 	github.com/golang-migrate/migrate/v4 v4.11.0
 	github.com/golang/protobuf v1.5.2
 	github.com/google/uuid v1.1.2
