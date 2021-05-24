@@ -3,8 +3,8 @@ package apierr
 import (
 	"context"
 
-	"github.com/gogo/status"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/status"
 )
 
 // HandleErrFunc is a function that transforms the error in some way

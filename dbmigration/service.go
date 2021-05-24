@@ -3,10 +3,10 @@ package dbmigration
 import (
 	"context"
 
-	"github.com/gogo/status"
 	"go.uber.org/zap"
 	"google.golang.org/appengine/log"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type MigrationService struct {
