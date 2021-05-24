@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/SecuritasCrimePrediction/apitools-go/notification/grpchook"
-	"github.com/gogo/status"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func Test_Config_ShouldNotifyForErr(t *testing.T) {
