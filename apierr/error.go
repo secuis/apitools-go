@@ -101,7 +101,7 @@ func GRPCCode(err error) codes.Code {
 
 	// CONFLICT
 	if errors.Is(err, ErrAlreadyExists) {
-		return codes.Aborted
+		return codes.AlreadyExists
 	}
 
 	// unexpected
